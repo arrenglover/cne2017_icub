@@ -25,6 +25,11 @@ int main(int argc, char * argv[])
 
     /* initialize yarp network */
     yarp::os::Network yarp;
+    if (!yarp.checkNetwork())
+    {
+        yError()<<"YARP doesn't seem to be available";
+        return 1;
+    }
 
     /* prepare and configure the resource finder */
     yarp::os::ResourceFinder rf;
@@ -74,13 +79,74 @@ bool vArmTraceController::open(const std::string &name)
 
     yarp::os::Property options;
     options.put("device", "gazecontrollerclient");
-    options.put("local", "/" + name);
+    options.put("local", name);
     options.put("remote", "/iKinGazeCtrl");
     gazedriver.open(options);
     if(gazedriver.isValid())
         gazedriver.view(gazecontrol);
-    else
-        std::cerr << "Gaze Driver not opened and will not be used" << std::endl;
+    else {
+        yError() << "Gaze Driver not opened and will not be used";
+        return false;
+    }
+    options.put("device","cartesiancontrollerclient");
+    options.put("remote","/icubSim/cartesianController/left_arm");
+    options.put("local","/cartesian_client/left_arm");
+
+    // let's give the controller some time to warm up
+    bool ok=false;
+    double t0=yarp::os::Time::now();
+    while (yarp::os::Time::now()-t0<10.0)
+    {
+        // this might fail if controller
+        // is not connected to solver yet
+        if (client.open(options))
+        {
+            ok=true;
+            break;
+        }
+
+        yarp::os::Time::delay(1.0);
+    }
+
+    if (!ok)
+    {
+        yError()<<"Unable to open the Cartesian Controller";
+        return false;
+    }
+
+    // open the view
+    client.view(arm);
+
+    // latch the controller context in order to preserve
+    // it after closing the module
+    // the context contains the dofs status, the tracking mode,
+    // the resting positions, the limits and so on.
+    arm->storeContext(&startup_context_id);
+
+    // set trajectory time
+    arm->setTrajTime(1.0);
+
+    // get the torso dofs
+    yarp::sig::Vector newDof, curDof;
+    arm->getDOF(curDof);
+    newDof=curDof;
+
+    // enable the torso yaw and pitch
+    // disable the torso roll
+    newDof[0]=1;
+    newDof[1]=0;
+    newDof[2]=1;
+
+    // send the request for dofs reconfiguration
+    arm->setDOF(newDof,curDof);
+
+    // impose some restriction on the torso pitch
+    limitTorsoPitch();
+
+    xd.resize(3);
+    od.resize(4);
+
+    yInfo()<<"Thread started successfully";
 
     return true;
 }
@@ -94,10 +160,71 @@ void vArmTraceController::interrupt()
 
 void vArmTraceController::close()
 {
+    // we require an immediate stop
+    // before closing the client for safety reason
+    arm->stopControl();
+
+    // it's a good rule to restore the controller
+    // context as it was before opening the module
+    arm->restoreContext(startup_context_id);
+
+    client.close();
     std::cout << "Closing Event Manager" << std::endl;
     yarp::os::BufferedPort<ev::vBottle>::close();
     std::cout << "Closed Event Manager" << std::endl;
 }
+
+void vArmTraceController::limitTorsoPitch()
+{
+    int axis=0; // pitch joint
+    double min, max;
+
+    // sometimes it may be helpful to reduce
+    // the range of variability of the joints;
+    // for example here we don't want the torso
+    // to lean out more than 30 degrees forward
+
+    // we keep the lower limit
+    arm->getLimits(axis,&min,&max);
+    arm->setLimits(axis,min,MAX_TORSO_PITCH);
+}
+
+//void vArmTraceController::printStatus()
+//{
+//    if (t-t1>=PRINT_STATUS_PER)
+//    {
+//        yarp::sig::Vector x,o,xdhat,odhat,qdhat;
+
+//        // we get the current arm pose in the
+//        // operational space
+//        if (!arm->getPose(x,o))
+//            return;
+
+//        // we get the final destination of the arm
+//        // as found by the solver: it differs a bit
+//        // from the desired pose according to the tolerances
+//        if (!arm->getDesired(xdhat,odhat,qdhat))
+//            return;
+
+//        double e_x=norm(xdhat-x);
+//        double e_o=norm(odhat-o);
+
+//        yInfo()<<"+++++++++";
+//        yInfo()<<"xd          [m] = "<<xd.toString();
+//        yInfo()<<"xdhat       [m] = "<<xdhat.toString();
+//        yInfo()<<"x           [m] = "<<x.toString();
+//        yInfo()<<"od        [rad] = "<<od.toString();
+//        yInfo()<<"odhat     [rad] = "<<odhat.toString();
+//        yInfo()<<"o         [rad] = "<<o.toString();
+//        yInfo()<<"norm(e_x)   [m] = "<<e_x;
+//        yInfo()<<"norm(e_o) [rad] = "<<e_o;
+//        yInfo()<<"---------";
+
+//        t1=t;
+//    }
+//}
+
+
 
 /******************************************************************************/
 void vArmTraceController::onRead(vBottle &inputBottle)
@@ -119,6 +246,19 @@ void vArmTraceController::onRead(vBottle &inputBottle)
         gazecontrol->get3DPoint(1, px, 1.0, xrobref);
         std::cout << px.toString() << " " << xrobref.toString() << std::endl;
     }
+
+    // we keep the orientation of the left arm constant:
+    // we want the middle finger to point forward (end-effector x-axis)
+    // with the palm turned down (end-effector y-axis points leftward);
+    // to achieve that it is enough to rotate the root frame of pi around z-axis
+    od[0]=0.0; od[1]=-0.5; od[2]=1.0; od[3]=M_PI;
+
+    // go to the target :)
+    // (in streaming)
+    arm->goToPose(xrobref,od);
+
+    // some verbosity
+    // printStatus();
 
 //    if(gazedriver.isValid() && dogaze && demo == graspdemo && gazingActive) {
 //    //if(gazedriver.isValid() && demo == graspdemo && gazingActive) {
@@ -169,9 +309,9 @@ void vArmTraceController::onRead(vBottle &inputBottle)
 bool vArmTraceModule::configure(yarp::os::ResourceFinder &rf)
 {
     //set the name of the module
-    std::string moduleName = rf.check("name", yarp::os::Value("vTrackToRobot")).asString();
+    std::string moduleName = rf.check("name", yarp::os::Value("/vArmTracing")).asString();
 
-    std::string rpcportname = "/" + moduleName + "/control";
+    std::string rpcportname = moduleName + "/control";
     if(!rpcPort.open(rpcportname)) {
         std::cerr << "Could not open RPC port" << std::endl;
     }

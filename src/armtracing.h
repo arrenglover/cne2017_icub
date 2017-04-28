@@ -21,8 +21,12 @@
 #include <yarp/os/all.h>
 #include <iCub/eventdriven/all.h>
 #include <yarp/dev/GazeControl.h>
+#include <yarp/dev/CartesianControl.h>
 #include <yarp/dev/PolyDriver.h>
 #include <deque>
+
+#define PRINT_STATUS_PER    1.0     // [s]
+#define MAX_TORSO_PITCH     30.0    // [deg]
 
 /*//////////////////////////////////////////////////////////////////////////////
   VBOTTLE READER/PROCESSOR
@@ -40,6 +44,14 @@ private:
     yarp::dev::PolyDriver gazedriver;
     yarp::dev::IGazeControl *gazecontrol;
 
+    yarp::dev::PolyDriver         client;
+    yarp::dev::ICartesianControl *arm;
+
+    yarp::sig::Vector xd; // position in cartesian space
+    yarp::sig::Vector od; // orientation in cartesian space of end-effector (orientation of the hand)
+
+    int startup_context_id;
+
 public:
 
     vArmTraceController();
@@ -48,6 +60,8 @@ public:
     void onRead(ev::vBottle &bot);
     void interrupt();
     void close();
+    //void printStatus();
+    void limitTorsoPitch();
 
 };
 
