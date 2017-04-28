@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011 Department of Robotics Brain and Cognitive Sciences - Istituto Italiano di Tecnologia
+ * Copyright (C) 2017 iCub Facility, IIT
  * Author: Arren.Glover@iit.it
  * Permission is granted to copy, distribute, and/or modify this program
  * under the terms of the GNU General Public License, version 2 or any
@@ -14,13 +14,9 @@
  * Public License for more details
  */
 
-/// \defgroup RobotIO RobotIO
-/// \defgroup vTrackToRobot vTrackToRobot
-/// \ingroup RobotIO
-/// \brief perform gaze control given cluster track events
 
-#ifndef __ICUB_VTRACKTOROBOT_H__
-#define __ICUB_VTRACKTOROBOT_H__
+#ifndef __ICUB_ARMTRACE__
+#define __ICUB_ARMTRACE__
 
 #include <yarp/os/all.h>
 #include <iCub/eventdriven/all.h>
@@ -32,42 +28,21 @@
   VBOTTLE READER/PROCESSOR
   ////////////////////////////////////////////////////////////////////////////*/
 
-class vTrackToRobotManager : public yarp::os::BufferedPort<ev::vBottle>
+class vArmTraceController : public yarp::os::BufferedPort<ev::vBottle>
 {
 private:
 
-    yarp::os::BufferedPort<yarp::os::Bottle> cartOutPort;
-    yarp::os::BufferedPort<yarp::os::Bottle> scopeOutPort;
-    yarp::os::BufferedPort<yarp::os::Bottle> positionOutPort;
-    yarp::os::BufferedPort<ev::vBottle> eventsOutPort;
-    yarp::dev::PolyDriver gazedriver;
-    yarp::dev::IGazeControl *gazecontrol;
-
-    enum { fromgaze, fromsize, fromstereo };
-    int method;
-    bool gazingActive;
-    enum { gazedemo, graspdemo };
-    int demo;
-    double lastdogazetime;
-
-
-    ev::temporalSurface FIFO;
-    std::deque<yarp::sig::Vector> recentgazelocs;
-    std::deque<double> recenteyezs;
-    double p_eyez;
     double medx;
     double medy;
     yarp::sig::Vector xrobref; //this stores the gaze position in eye ref frame
     yarp::sig::Vector px; //the pixel position to make a gaze
 
+    yarp::dev::PolyDriver gazedriver;
+    yarp::dev::IGazeControl *gazecontrol;
+
 public:
 
-    vTrackToRobotManager();
-
-    void setMethod(std::string methodname);
-    void setDemo(std::string demoname);
-    void startGazing() {gazingActive = true;}
-    void stopGazing() {gazingActive = false;}
+    vArmTraceController();
 
     bool open(const std::string &name);
     void onRead(ev::vBottle &bot);
@@ -80,22 +55,15 @@ public:
   MODULE
   ////////////////////////////////////////////////////////////////////////////*/
 
-class vTrackToRobotModule : public yarp::os::RFModule
+class vArmTraceModule : public yarp::os::RFModule
 {
 private:
 
     //the event bottle input and output handler
-    vTrackToRobotManager      vTrackToRobot;
+    vArmTraceController      tracecontrol;
 
     //the remote procedure port
     yarp::os::RpcServer     rpcPort;
-
-
-    //robot control settings
-//    yarp::dev::PolyDriver mdriver;
-//    yarp::dev::IPositionControl *pc;
-//    yarp::dev::IEncoders *ec;
-
 
 public:
 
@@ -111,6 +79,4 @@ public:
 
 };
 
-
 #endif
-//empty line to make gcc happy
