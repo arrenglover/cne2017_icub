@@ -66,7 +66,7 @@ bool vArmTraceController::open(const std::string &name)
 
     this->useCallback();
 
-    std::string vInPortName = "/" + name + "/vBottle:i";
+    std::string vInPortName = name + "/vBottle:i";
     if(!yarp::os::BufferedPort<ev::vBottle>::open(vInPortName)) {
         std::cerr << "Could not open: " << vInPortName << std::endl;
         return false;
