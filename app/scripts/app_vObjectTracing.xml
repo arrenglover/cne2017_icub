@@ -6,13 +6,25 @@
 
 <module>
     <name> zynqGrabber </name>
-    <parameters> </parameters>
+    <parameters>  </parameters>
     <node>icub-zynq</node>
 </module>
 
 <module>
+    <name> vParticleFilter </name>
+    <parameters> --threads 6 </parameters>
+    <node> icub23 </node>
+</module>
+
+<module>
+    <name> vArmTracing </name>
+    <parameters> </parameters>
+    <node> icub23 </node>
+</module>
+
+<module>
     <name> vFramer</name>
-    <parameters> --frameRate 30 --displays "(0 /left (AE ISO) 1 /right (AE ISO))" --height 240 --width 304 --strict --flip</parameters>
+    <parameters> --frameRate 30 --displays "(0 /left (AE ISO) 1 /right (AE CLE ISO))" --height 240 --width 304 --strict --flip</parameters>
     <node>icub24</node>
 </module>
 
@@ -28,10 +40,27 @@
    <node>icub24</node>
 </module>
 
+<connection>
+  <from>/zynqGrabber/vBottle:o</from>
+  <to>/vpf/vBottle:i</to>
+  <protocol>tcp</protocol>
+</connection>
+
+<connection>
+  <from>/vpf/vBottle:o</from>
+  <to>/vArmTracing/vBottle:i</to>
+  <protocol>tcp</protocol>
+</connection>
 
 <connection>
   <from>/zynqGrabber/vBottle:o</from>
   <to>/vFramer/AE:i</to>
+  <protocol>tcp</protocol>
+</connection>
+
+<connection>
+  <from>/vpf/vBottle:o</from>
+  <to>/vFramer/GAE:i</to>
   <protocol>tcp</protocol>
 </connection>
 
