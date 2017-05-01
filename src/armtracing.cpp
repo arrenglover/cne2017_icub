@@ -89,8 +89,12 @@ bool vArmTraceController::open(const std::string &name)
         return false;
     }
     options.put("device","cartesiancontrollerclient");
-    options.put("remote","/icubSim/cartesianController/left_arm");
-    options.put("local","/cartesian_client/left_arm");
+    // left arm
+    //    options.put("remote","/icubSim/cartesianController/left_arm");
+    //    options.put("local","/cartesian_client/left_arm");
+    //right arm
+    options.put("remote","/icub/cartesianController/right_arm");
+    options.put("local","/cartesian_client/right_arm");
 
     // let's give the controller some time to warm up
     bool ok=false;
@@ -133,9 +137,9 @@ bool vArmTraceController::open(const std::string &name)
 
     // enable the torso yaw and pitch
     // disable the torso roll
-    newDof[0]=1;
+    newDof[0]=0;
     newDof[1]=0;
-    newDof[2]=1;
+    newDof[2]=0;
 
     // send the request for dofs reconfiguration
     arm->setDOF(newDof,curDof);
@@ -243,19 +247,31 @@ void vArmTraceController::onRead(vBottle &inputBottle)
     px[1] = 239 - vc->y;
     //turn u/v into xyz
     if(gazedriver.isValid()) {
-        gazecontrol->get3DPoint(1, px, 1.0, xrobref);
+        gazecontrol->get3DPoint(1, px, 0.3, xrobref);
         std::cout << px.toString() << " " << xrobref.toString() << std::endl;
     }
 
+
+    // we need to add an offset and possibly a scaling factor to x, to keep thehand in the reaching space of the arm without moving the torso so much
+
+
+    // we need to add an offset to off-centre the movement to avoid interference with the torso and the movement backward
+
     // we keep the orientation of the left arm constant:
     // we want the middle finger to point forward (end-effector x-axis)
-    // with the palm turned down (end-effector y-axis points leftward);
+    // with the palm turned between down and right (end-effector y-axis points leftward);
     // to achieve that it is enough to rotate the root frame of pi around z-axis
-    od[0]=0.0; od[1]=-0.5; od[2]=1.0; od[3]=M_PI;
+
+    // left hand rotation
+    // od[0]=0.0; od[1]=-0.5; od[2]=1.0; od[3]=M_PI;
+
+    // right hand rotation
+    od[0]=0.0; od[1]=-1.5; od[2]=1.0; od[3]=M_PI;
 
     // go to the target :)
     // (in streaming)
-    arm->goToPose(xrobref,od);
+    //arm->goToPose(xrobref,od);
+    arm->goToPosition(xrobref);
 
     // some verbosity
     // printStatus();
