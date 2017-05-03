@@ -52,6 +52,8 @@ private:
 
     int startup_context_id;
 
+    yarp::os::BufferedPort<yarp::os::Bottle> scopeport;
+
 public:
 
     vArmTraceController();

@@ -77,6 +77,11 @@ bool vArmTraceController::open(const std::string &name)
         return false;
     }
 
+    if(!scopeport.open(name + "/scope:o")) {
+        yError() << "Could not open scope port";
+        return false;
+    }
+
     yarp::os::Property options;
     options.put("device", "gazecontrollerclient");
     options.put("local", name);
@@ -251,6 +256,22 @@ void vArmTraceController::onRead(vBottle &inputBottle)
         std::cout << px.toString() << " " << xrobref.toString() << std::endl;
     }
 
+    yarp::os::Bottle &scopedata = scopeport.prepare();
+    scopedata.clear();
+    yarp::sig::Vector handpos, handor;
+    arm->getPose(handpos, handor);
+
+    scopedata.addDouble(handpos[0]);
+    scopedata.addDouble(handpos[1]);
+    scopedata.addDouble(handpos[2]);
+
+    scopedata.addDouble(xrobref[0]);
+    scopedata.addDouble(xrobref[1]);
+    scopedata.addDouble(xrobref[2]);
+
+    scopeport.setEnvelope(st);
+    scopeport.write();
+
 
     // we need to add an offset and possibly a scaling factor to x, to keep thehand in the reaching space of the arm without moving the torso so much
 
@@ -271,6 +292,7 @@ void vArmTraceController::onRead(vBottle &inputBottle)
     // go to the target :)
     // (in streaming)
     //arm->goToPose(xrobref,od);
+    xrobref[1] += 0.1;
     arm->goToPosition(xrobref);
 
     // some verbosity
