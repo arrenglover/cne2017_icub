@@ -1,14 +1,15 @@
 <algorithms>
     <algorithm name="ICub4ChipReflectorRoutingTableGenerator">
-        <python_module>pacman.operations.routing_table_generators.icub_4_chip_reflector_routing_table_generator</python_module>
+        <python_module>
+            pacman.operations.routing_table_generators.icub_4_chip_reflector_routing_table_generator
+        </python_module>
         <python_class>ICub4ChipReflectorRoutingTableGenerator</python_class>
+        <input_definitions>
+        </input_definitions>
         <required_inputs>
         </required_inputs>
-        <produces_outputs>
-            <parameter>
-                <param_name>router_tables</param_name>
-                <param_type>MemoryRoutingTables</param_type>
-            </parameter>
-        </produces_outputs>
+        <outputs>
+            <param_type>MemoryRoutingTables</param_type>
+        </outputs>
     </algorithm>
 </algorithms>
