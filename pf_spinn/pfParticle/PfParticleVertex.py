@@ -106,8 +106,10 @@ class PfParticleVertex(
 
         # write reception key
         spec.switch_write_focus(self.DATA_REGIONS.RECEPTION_BASE_KEYS.value)
-        routing_key = routing_info.get_first_key_from_partition(
-            app_constants.EDGE_PARTITION_EVENT)
+        input_vertex = \
+            list(machine_graph.get_edges_ending_at_vertex(self))[0].pre_vertex
+        routing_key = routing_info.get_first_key_from_pre_vertex(
+            input_vertex, app_constants.EDGE_PARTITION_EVENT)
         if routing_key is None:
             raise Exception("The particle is not receiving from the retina")
         spec.write_value(routing_key)
