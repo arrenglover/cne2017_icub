@@ -177,9 +177,9 @@ class PfAggVertex(
         # writing if recording
         spec.switch_write_focus(region=self.DATA_REGIONS.CONFIG.value)
         if self._record_data:
-            spec.write(1)
+            spec.write_value(1)
         else:
-            spec.write(0)
+            spec.write_value(0)
         
         # writing particle keys
         spec.switch_write_focus(
