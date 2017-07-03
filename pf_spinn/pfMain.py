@@ -41,6 +41,7 @@ machine_time_step = 1000
 time_scale_factor = 1
 n_particles = 100
 spinnaker_link_used = 0
+packets_threshold = 30
 
 # calculate total number of 'free' cores for the given board
 # (i.e. does not include those busy with SARK or reinjection)
@@ -57,7 +58,8 @@ agg_list = list()
 for x in range(0, n_particles):
     vertex = PfParticleVertex(
         x=random.randint(0, 304), y=random.randint(0, 240),
-        r=random.randint(0, 30), label="Particle {}".format(x))
+        r=random.randint(0, 30), packet_threshold=packets_threshold,
+        label="Particle {}".format(x))
     front_end.add_machine_vertex_instance(vertex)
     particle_list.append(vertex)
 

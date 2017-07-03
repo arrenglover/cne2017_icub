@@ -38,9 +38,9 @@ class PfParticleVertex(
     CORE_APP_IDENTIFIER = 0xBEEF
     TRANSMISSION_DATA_SIZE = 8
     RECEPTION_KEY_SIZE = 4
-    CONFIG_PARAM_SIZE = 12
+    CONFIG_PARAM_SIZE = 16
 
-    def __init__(self, x, y, r, label, constraints=None):
+    def __init__(self, x, y, r, packet_threshold, label, constraints=None):
         MachineVertex.__init__(self, label=label, constraints=constraints)
         
         AbstractProvidesNKeysForPartition.__init__(self)
@@ -48,6 +48,7 @@ class PfParticleVertex(
         self._x = x
         self._y = y
         self._r = r
+        self._packet_threshold = packet_threshold
         self._placement = None
 
     @property
@@ -119,6 +120,7 @@ class PfParticleVertex(
         spec.write_value(self._x)
         spec.write_value(self._y)
         spec.write_value(self._r)
+        spec.write_value(self._packet_threshold)
 
         # End-of-Spec:
         spec.end_specification()
