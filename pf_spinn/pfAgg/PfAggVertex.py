@@ -1,7 +1,6 @@
 import struct
 
-from pacman.executor.injection_decorator import requires_injection, inject, \
-    inject_items
+from pacman.executor.injection_decorator import inject_items
 from pacman.model.decorators.overrides import overrides
 from pacman.model.graphs.machine import MachineVertex
 from pacman.model.resources import CPUCyclesPerTickResource, DTCMResource
@@ -30,6 +29,8 @@ from spinn_front_end_common.utilities import constants
 
 from enum import Enum
 import logging
+
+from pf_spinn import constants as app_constants
 
 logger = logging.getLogger(__name__)
 
@@ -111,9 +112,10 @@ class PfAggVertex(
         
     @overrides(AbstractProvidesNKeysForPartition.get_n_keys_for_partition)
     def get_n_keys_for_partition(self, partition, graph_mapper):
-        if partition == "Resample Data":
+        if partition.identifier == app_constants.EDGE_PARTITION_RE_SAMPLE:
             return self.KEYS_PER_SAMPLE_DATA
-        if partition == "Target Position":
+        if (partition.identifier ==
+                app_constants.EDGE_PARTITION_TARGET_POSITION):
             return self.KEYS_PER_TARGET_POSITION
         raise Exception("Incorrect Partition Name at aggregator")
 
@@ -153,7 +155,8 @@ class PfAggVertex(
         spec.switch_write_focus(
             region=self.DATA_REGIONS.TRANSMISSION_DATA.value)
         
-        key1 = routing_info.get_first_key_from_partition("Resample Data")
+        key1 = routing_info.get_first_key_from_partition(
+            app_constants.EDGE_PARTITION_RE_SAMPLE)
         if key1 is None:
             spec.write_value(0)
             spec.write_value(0)
@@ -162,7 +165,8 @@ class PfAggVertex(
             spec.write_value(key1)
 
         if self._transmit_target_position:
-            key2 = routing_info.get_first_key_from_partition("Target Position")
+            key2 = routing_info.get_first_key_from_partition(
+                app_constants.EDGE_PARTITION_TARGET_POSITION)
             if key2 is None:
                 spec.write_value(0)
                 spec.write_value(0)
@@ -208,8 +212,7 @@ class PfAggVertex(
             size=4,
             label="Config (recording or not)")
 
-    @staticmethod
-    def get_data(placement, buffer_manager):
+    def get_data(self, placement, buffer_manager):
         """ Get the data written into sdram
 
         :param placement: the location of this vertex
@@ -222,10 +225,12 @@ class PfAggVertex(
             raise Exception("missing data!")
         record_raw = data_pointer.read_all()
         output = str(record_raw)
-        formatstring = "<{}III".format(len(output) / 12)
+        formatstring = "<{}III".format(
+            len(output) / self.SDRAM_PER_TIMER_TICK_PER_RECORDING)
         elements = struct.unpack(formatstring, bytes(output))
         data = list()
-        for position in range(0, len(output) / 12):
+        for position in range(
+                0, len(output) / self.SDRAM_PER_TIMER_TICK_PER_RECORDING):
             x = elements[0 + (position * 3)]
             y = elements[1 + (position * 3)]
             r = elements[2 + (position * 3)]
@@ -242,7 +247,9 @@ class PfAggVertex(
     def get_n_timesteps_in_buffer_space(
             self, buffer_space, machine_time_step, n_machine_time_steps):
         return recording_utilities.get_n_timesteps_in_buffer_space(
-            buffer_space, [n_machine_time_steps * 12])
+            buffer_space, [
+                n_machine_time_steps *
+                self.SDRAM_PER_TIMER_TICK_PER_RECORDING])
 
     def get_recorded_region_ids(self):
         return [0]

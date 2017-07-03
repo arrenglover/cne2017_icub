@@ -3,6 +3,7 @@ from spinn_front_end_common.abstract_models.\
     abstract_provides_n_keys_for_partition import \
     AbstractProvidesNKeysForPartition
 from spinn_utilities.overrides import overrides
+from pf_spinn import constants
 
 
 class ICUBInputVertex(
@@ -18,6 +19,6 @@ class ICUBInputVertex(
 
     @overrides(AbstractProvidesNKeysForPartition.get_n_keys_for_partition)
     def get_n_keys_for_partition(self, partition, graph_mapper):
-        if partition == "Event":
+        if partition.identifier == constants.EDGE_PARTITION_EVENT:
             return 72960
         raise Exception("Incorrect Partition Name at icub input vertex")

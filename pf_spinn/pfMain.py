@@ -22,6 +22,9 @@ from pf_spinn.pfParticle.PfParticleVertex import PfParticleVertex
 from pf_spinn.ICUB_input_vertex.ICUB_input_vertex import ICUBInputVertex
 from pf_spinn.ICUB_output_vertex.ICUB_output_vertex import ICUBOutputVertex
 
+# constants
+from pf_spinn import constants
+
 # common import
 import random
 
@@ -32,12 +35,12 @@ logger = logging.getLogger(__name__)
 n_chips_required = 4
 front_end.setup(n_chips_required=n_chips_required,
                 model_binary_module=binaries)
-machine = front_end.machine()
 
 # state variables
 machine_time_step = 1000
 time_scale_factor = 1
 n_particles = 100
+spinnaker_link_used = 0
 
 # calculate total number of 'free' cores for the given board
 # (i.e. does not include those busy with SARK or reinjection)
@@ -53,12 +56,12 @@ agg_list = list()
 # create particles
 for x in range(0, n_particles):
     vertex = PfParticleVertex(
-        x=random.random(304), y=random.random(240),
-        r=random.random(30), label="Particle {}".format(x))
+        x=random.randint(0, 304), y=random.randint(0, 240),
+        r=random.randint(0, 30), label="Particle {}".format(x))
     front_end.add_machine_vertex_instance(vertex)
     particle_list.append(vertex)
 
-# create aggrigators
+# create aggregator
 for x in range(0, n_particles):
     vertex = PfAggVertex(
         record_data=(x == 0), transmit_target_position=(x == 0),
@@ -76,11 +79,13 @@ for x in range(0, n_particles):
 
 # when running on the icub we'll need this vertex
 input_vertex = ICUBInputVertex(
-    spinnaker_link_id=1, board_address=None, label="Input Vertex")
+    spinnaker_link_id=spinnaker_link_used, board_address=None,
+    label="Input Vertex")
 front_end.add_machine_vertex_instance(input_vertex)
 
 output_vertex = ICUBOutputVertex(
-    spinnaker_link_id=1, board_address=None, label="Output Vertex")
+    spinnaker_link_id=spinnaker_link_used, board_address=None,
+    label="Output Vertex")
 front_end.add_machine_vertex_instance(output_vertex)
 
 # EDGES
@@ -89,7 +94,7 @@ for x in range(0, n_particles):
         MachineEdge(
             input_vertex, particle_list[x],
             label="Edge Input to P{}".format(x)),
-        "Event")
+        constants.EDGE_PARTITION_EVENT)
         
 for x in range(0, n_particles):
     for y in range(0, n_particles):
@@ -97,7 +102,7 @@ for x in range(0, n_particles):
             MachineEdge(
                 particle_list[x],
                 agg_list[y], label="Edge P{} to A{}".format(x, y)),
-            "Particle State")
+            constants.EDGE_PARTITION_PARTICLE_STATE)
 
 
 for x in range(0, n_particles):
@@ -106,15 +111,15 @@ for x in range(0, n_particles):
             agg_list[x],
             particle_list[x],
             label="Edge A{} to P{}".format(x, x)),
-        "Resample Data")
+        constants.EDGE_PARTITION_RE_SAMPLE)
 
-#used with the icub
+# used with the icub
 front_end.add_machine_edge_instance(
     MachineEdge(
         agg_list[0],
         output_vertex,
         label="Final Result Edge"),
-    "Target Position")
+    constants.EDGE_PARTITION_TARGET_POSITION)
 
 front_end.run(10)
 

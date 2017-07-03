@@ -3,20 +3,20 @@ from pacman.model.graphs.machine import MachineVertex
 from pacman.model.resources import CPUCyclesPerTickResource, DTCMResource
 from pacman.model.resources import ResourceContainer, SDRAMResource
 
-from spinn_front_end_common.utilities import constants, helpful_functions
+from spinn_front_end_common.utilities import constants
 from spinn_front_end_common.interface.simulation import simulation_utilities
 from spinn_front_end_common.abstract_models.impl.machine_data_specable_vertex \
     import MachineDataSpecableVertex
 from spinn_front_end_common.abstract_models.abstract_has_associated_binary \
     import AbstractHasAssociatedBinary
-from spinn_front_end_common.interface.buffer_management\
-    import recording_utilities
 from spinn_front_end_common.utilities.utility_objs.executable_start_type \
     import ExecutableStartType
 
 from spinn_front_end_common.abstract_models.\
     abstract_provides_n_keys_for_partition import \
     AbstractProvidesNKeysForPartition
+
+from pf_spinn import constants as app_constants
 
 from enum import Enum
 import logging
@@ -55,7 +55,8 @@ class PfParticleVertex(
     def resources_required(self):
         sdram_required = (
             constants.SYSTEM_BYTES_REQUIREMENT +
-            self.TRANSMISSION_DATA_SIZE + self.n_particles * 4)
+            self.TRANSMISSION_DATA_SIZE + self.RECEPTION_KEY_SIZE +
+            self.CONFIG_PARAM_SIZE)
         resources = ResourceContainer(
             cpu_cycles=CPUCyclesPerTickResource(45),
             dtcm=DTCMResource(100), sdram=SDRAMResource(sdram_required))
@@ -104,7 +105,8 @@ class PfParticleVertex(
             spec.write_value(routing_key)
 
         # write reception key
-        routing_key = routing_info.get_first_key_from_partition("Event")
+        routing_key = routing_info.get_first_key_from_partition(
+            app_constants.EDGE_PARTITION_EVENT)
         spec.switch_write_focus(self.DATA_REGIONS.RECEPTION_BASE_KEYS.value)
         spec.write_value(routing_key)
 
