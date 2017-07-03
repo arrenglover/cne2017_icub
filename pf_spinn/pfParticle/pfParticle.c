@@ -62,16 +62,22 @@ void receive_data_payload(uint key, uint payload) {
     use(payload);
 }
 
+//! \brief callback when packet with no payload is received (retina)
+//! \param[in] key: the key received
+//! \param[in] payload: unused. is set to 0
 void receive_data_no_payload(uint key, uint payload) {
     use(payload);
     use(key);
 }
 
-
+//! \brief callback for when resuming
 void resume_callback() {
     time = UINT32_MAX;
 }
 
+//! \brief callback for user
+//! \param[in] random param1
+//! \param[in] random param2
 void user_callback(uint user0, uint user1){
     use(user0);
     use(user1);

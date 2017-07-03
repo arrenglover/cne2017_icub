@@ -12,9 +12,6 @@ static uint32_t simulation_ticks = 0;
 static uint32_t infinite_run = 0;
 static uint32_t time = 0;
 
-//! int as a bool to represent if this simulation should run forever
-static uint32_t infinite_run;
-
 //! The recording flags
 static uint32_t recording_flags = 0;
 
@@ -36,39 +33,13 @@ typedef enum transmission_region_elements {
 
 
 
-void receive_data(uint key, uint payload) {
+void receive_data_payload(uint key, uint payload) {
     use(key);
     use(payload);
 }
 
-void iobuf_data(){
-    address_t address = data_specification_get_data_address();
-    address_t hello_world_address =
-        data_specification_get_region(RECORDED_DATA, address);
-
-    log_info("Hello world address is %08x", hello_world_address);
-
-    char* my_string = (char *) &hello_world_address[1];
-    log_info("Data read is: %s", my_string);
-}
-
 void record_data() {
-    log_debug("Recording data...");
 
-    uint chip = spin1_get_chip_id();
-
-    uint core = spin1_get_core_id();
-
-    log_debug("Issuing 'Hello World' from chip %d, core %d", chip, core);
-
-    bool recorded = recording_record(
-        0, "Hello world", 11 * sizeof(char));
-
-    if (recorded) {
-        log_debug("Hello World recorded successfully!");
-    } else {
-        log_error("Hello World was not recorded...");
-    }
 }
 
 
