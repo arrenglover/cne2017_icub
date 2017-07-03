@@ -34,7 +34,9 @@ class pfParticle_Vertex(
     DATA_REGIONS = Enum(
         value="DATA_REGIONS",
         names=[('SYSTEM', 0),
-               ('STRING_DATA', 1)])
+               ('TRANSMISSION_DATA', 1),
+               ('RECEPTION_BASE_KEYS', 2),
+               ('INITIALISATION_DATA', 3)])
 
     CORE_APP_IDENTIFIER = 0xBEEF
 
@@ -53,14 +55,17 @@ class pfParticle_Vertex(
             "Buffers", "receive_buffer_host")
         self._receive_buffer_port = helpful_functions.read_config_int(
             config, "Buffers", "receive_buffer_port")
-
-        self._string_data_size = 5000
-
-        self.placement = None
+        self.x = x
+        self.y = y
+        self.r = r
+        self.tw = tw
+        self.TRANSMISSION_DATA_SIZE = 16
 
     @property
     @overrides(MachineVertex.resources_required)
     def resources_required(self):
+        sdram_required = constants.SYSTEM_BYTES_REQUIREMENT + 
+                self.TRANSMISSION_DATA_SIZE + self.n_particles*4;
         resources = ResourceContainer(
             cpu_cycles=CPUCyclesPerTickResource(45),
             dtcm=DTCMResource(100), sdram=SDRAMResource(100))

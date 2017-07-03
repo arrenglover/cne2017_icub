@@ -41,7 +41,7 @@ class pfAgg_Vertex(
 
     CORE_APP_IDENTIFIER = 0xBEEF
 
-    def __init__(self, label, constraints=None):
+    def __init__(self, label, n_particles, constraints=None, record_data=False):
         MachineVertex.__init__(self, label=label, constraints=constraints)
         
         AbstractProvidesNKeysForPartition.__init__(self)
@@ -58,6 +58,8 @@ class pfAgg_Vertex(
             config, "Buffers", "receive_buffer_port")
         self._n_machine_time_steps = None
         self.TRANSMISSION_DATA_SIZE = 16
+        self.n_particles = n_particles
+        self.record_data = record_data
 
         self.placement = None
 
@@ -65,9 +67,14 @@ class pfAgg_Vertex(
     @overrides(MachineVertex.resources_required)
     @requires_injection(["TotalMachineTimeSteps"])
     def resources_required(self):
+        sdram_required = constants.SYSTEM_BYTES_REQUIREMENT + 
+                self.TRANSMISSION_DATA_SIZE + self.n_particles*4;
+        if(self.record_data):
+            sdram_required += (self._n_machine_time_steps*12);
+        
         resources = ResourceContainer(
             cpu_cycles=CPUCyclesPerTickResource(45),
-            dtcm=DTCMResource(100), sdram=SDRAMResource((self._n_machine_time_steps*12) + constants.SYSTEM_BYTES_REQUIREMENT +  self.TRANSMISSION_DATA_SIZE))
+            dtcm=DTCMResource(100), sdram=SDRAMResource(sdram_required)
 
         resources.extend(recording_utilities.get_recording_resources(
             [self._n_machine_time_steps*12],
@@ -117,7 +124,7 @@ class pfAgg_Vertex(
             time_scale_factor))
 
         # recording data region
-        spec.switch_write_focus(self.DATA_REGIONS.STRING_DATA.value)
+        spec.switch_write_focus(self.DATA_REGIONS.RECORDED_DATA.value)
         spec.write_array(recording_utilities.get_recording_header_array(
             [self._n_machine_time_steps*12], self._time_between_requests,
             self._n_machine_time_steps*12 + 256, iptags))
@@ -125,7 +132,7 @@ class pfAgg_Vertex(
         #writing my key
         spec.switch_write_focus(region=self.DATA_REGIONS.TRANSMISSION_DATA.value)
         
-        key1 = routing_info.get_first_key_from_partition("Normalisation Value")
+        key1 = routing_info.get_first_key_from_partition("Resample Data")
         if key1 is None:
             spec.write_value(0)
             spec.write_value(0)
@@ -142,7 +149,10 @@ class pfAgg_Vertex(
             spec.write_value(key2)
         
         #writing particle keys
-        spec.switch_write_focus(region=self.DATA_REGIONS.TRANSMISSION_DATA.value)        
+        spec.switch_write_focus(region=self.DATA_REGIONS.RECEPTION_BASE_KEYS.value)
+        for e in edges
+            edge_key = routing_info.get_first_key_for_edge(e)
+            spec.write_value(edge_key)
 
         # End-of-Spec:
         spec.end_specification()
@@ -164,7 +174,7 @@ class pfAgg_Vertex(
             size=n_particles*4,
             label="Particle Keys")
 
-    def read(self, placement, buffer_manager):
+    def getdata(self, placement, buffer_manager):
         """ Get the data written into sdram
 
         :param placement: the location of this vertex
@@ -177,18 +187,27 @@ class pfAgg_Vertex(
             raise Exception("missing data!")
         record_raw = data_pointer.read_all()
         output = str(record_raw)
-        return output
+        formatstring = "<{}III".format(len(record_raw) / 12)
+        elements = struct.unpack(formatstring, bytes(record_raw))
+        data = list()
+        for position in range(0, len(record_raw) / 12)
+            x = elements[0 + (position * 3)]
+            y = elements[1 + (position * 3)]
+            r = elements[2 + (position * 3)]
+            data.append((x, y, r))
+            
+        return data
 
     def get_minimum_buffer_sdram_usage(self):
         return self._string_data_size
 
     def get_n_timesteps_in_buffer_space(self, buffer_space, machine_time_step):
         return recording_utilities.get_n_timesteps_in_buffer_space(
-            buffer_space, len("Hello world"))
+            buffer_space, self.n_machine_timesteps*12)
 
     def get_recorded_region_ids(self):
         return [0]
 
     def get_recording_region_base_address(self, txrx, placement):
         return helpful_functions.locate_memory_region_for_placement(
-            placement, self.DATA_REGIONS.STRING_DATA.value, txrx)
+            placement, self.DATA_REGIONS.RECORDED_DATA.value, txrx)
