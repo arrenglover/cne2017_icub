@@ -29,9 +29,7 @@ import random
 logger = logging.getLogger(__name__)
 
 # get machine and setup backend
-n_chips_required = None
-if front_end.is_allocated_machine():
-    n_chips_required = 4
+n_chips_required = 4
 front_end.setup(n_chips_required=n_chips_required,
                 model_binary_module=binaries)
 machine = front_end.machine()

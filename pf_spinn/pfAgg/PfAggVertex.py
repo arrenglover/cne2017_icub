@@ -1,6 +1,7 @@
 import struct
 
-from pacman.executor.injection_decorator import requires_injection, inject
+from pacman.executor.injection_decorator import requires_injection, inject, \
+    inject_items
 from pacman.model.decorators.overrides import overrides
 from pacman.model.graphs.machine import MachineVertex
 from pacman.model.resources import CPUCyclesPerTickResource, DTCMResource
@@ -70,23 +71,23 @@ class PfAggVertex(
             "Buffers", "receive_buffer_host")
         self._receive_buffer_port = helpful_functions.read_config_int(
             self._config, "Buffers", "receive_buffer_port")
-        self._n_machine_time_steps = None
         self.n_particles = n_particles
         self._record_data = record_data
         self._transmit_target_position = transmit_target_position
         self._placement = None
 
     @property
-    @overrides(MachineVertex.resources_required)
-    @requires_injection(["TotalMachineTimeSteps"])
-    def resources_required(self):
+    @inject_items({"n_machine_time_steps": "TotalMachineTimeSteps"})
+    @overrides(MachineVertex.resources_required,
+               additional_arguments=["n_machine_time_steps"])
+    def resources_required(self, n_machine_time_steps):
         sdram_required = (
             constants.SYSTEM_BYTES_REQUIREMENT +
             self.TRANSMISSION_DATA_SIZE + (self.n_particles * 4) + 4)
 
         if self._record_data:
             sdram_required += (
-                self._n_machine_time_steps *
+                n_machine_time_steps *
                 self.SDRAM_PER_TIMER_TICK_PER_RECORDING)
         
         resources = ResourceContainer(
@@ -94,7 +95,7 @@ class PfAggVertex(
             dtcm=DTCMResource(100), sdram=SDRAMResource(sdram_required))
 
         resources.extend(recording_utilities.get_recording_resources(
-            [self._n_machine_time_steps *
+            [n_machine_time_steps *
              self.SDRAM_PER_TIMER_TICK_PER_RECORDING],
             self._receive_buffer_host, self._receive_buffer_port))
 
@@ -115,15 +116,14 @@ class PfAggVertex(
         if partition == "Target Position":
             return self.KEYS_PER_TARGET_POSITION
         raise Exception("Incorrect Partition Name at aggregator")
-        
-    @inject("TotalMachineTimeSteps")    
-    def set_n_machine_time_steps(self, n_machine_time_steps):        
-        self._n_machine_time_steps = n_machine_time_steps
 
-    @overrides(MachineDataSpecableVertex.generate_machine_data_specification)
+    @inject_items({"n_machine_time_steps": "TotalMachineTimeSteps"})
+    @overrides(MachineDataSpecableVertex.generate_machine_data_specification,
+               additional_arguments=["n_machine_time_steps"])
     def generate_machine_data_specification(
             self, spec, placement, machine_graph, routing_info, iptags,
-            reverse_iptags, machine_time_step, time_scale_factor):
+            reverse_iptags, machine_time_step, time_scale_factor,
+            n_machine_time_steps):
         self._placement = placement
 
         # Setup words + 1 for flags + 1 for recording size
@@ -144,10 +144,9 @@ class PfAggVertex(
         # recording data region
         spec.switch_write_focus(self.DATA_REGIONS.RECORDED_DATA.value)
         spec.write_array(recording_utilities.get_recording_header_array(
-            [self._n_machine_time_steps *
+            [n_machine_time_steps *
              self.SDRAM_PER_TIMER_TICK_PER_RECORDING],
-            self._time_between_requests,
-            self._n_machine_time_steps *
+            self._time_between_requests, n_machine_time_steps *
             self.SDRAM_PER_TIMER_TICK_PER_RECORDING + 256, iptags))
 
         # writing my key
@@ -237,9 +236,13 @@ class PfAggVertex(
     def get_minimum_buffer_sdram_usage(self):
         return self._string_data_size
 
-    def get_n_timesteps_in_buffer_space(self, buffer_space, machine_time_step):
+    @inject_items({"n_machine_time_steps": "TotalMachineTimeSteps"})
+    @overrides(AbstractReceiveBuffersToHost.get_n_timesteps_in_buffer_space,
+               additional_arguments=["n_machine_time_steps"])
+    def get_n_timesteps_in_buffer_space(
+            self, buffer_space, machine_time_step, n_machine_time_steps):
         return recording_utilities.get_n_timesteps_in_buffer_space(
-            buffer_space, [self.n_machine_timesteps * 12])
+            buffer_space, [n_machine_time_steps * 12])
 
     def get_recorded_region_ids(self):
         return [0]
