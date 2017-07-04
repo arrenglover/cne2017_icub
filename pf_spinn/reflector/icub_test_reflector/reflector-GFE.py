@@ -1,10 +1,5 @@
 """
-Hello World program on Spinnaker
-
-Each core stores into its region in SDRAM the string:
-"Hello World from $chip.x, $chip.y, $core"
-
-We then fetch the written data and print it on the python console.
+reflector using gfe
 """
 
 import spinnaker_graph_front_end as front_end
