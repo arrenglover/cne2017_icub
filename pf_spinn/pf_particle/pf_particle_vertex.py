@@ -38,7 +38,7 @@ class PfParticleVertex(
                ('CONFIG', 3)])
 
     CORE_APP_IDENTIFIER = 0xBEEF
-    TRANSMISSION_DATA_SIZE = 8
+    TRANSMISSION_DATA_SIZE = 16
     RECEPTION_KEY_SIZE = 8
     CONFIG_PARAM_SIZE = 16
 

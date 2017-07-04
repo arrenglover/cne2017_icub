@@ -84,7 +84,7 @@ class PfAggVertex(
     def resources_required(self, n_machine_time_steps):
         sdram_required = (
             constants.SYSTEM_BYTES_REQUIREMENT +
-            self.TRANSMISSION_DATA_SIZE + (self.n_particles * 4) + 4)
+            self.TRANSMISSION_DATA_SIZE + 4 + (self.n_particles * 4) + 4)
 
         if self._record_data:
             sdram_required += (
@@ -206,7 +206,7 @@ class PfAggVertex(
             label="My Key")
         spec.reserve_memory_region(
             region=self.DATA_REGIONS.RECEPTION_BASE_KEYS.value,
-            size=n_particles * 4,
+            size=4 + (n_particles * 4),
             label="Particle Keys")
         spec.reserve_memory_region(
             region=self.DATA_REGIONS.CONFIG.value,
@@ -226,17 +226,17 @@ class PfAggVertex(
             raise Exception("missing data!")
         record_raw = data_pointer.read_all()
         output = str(record_raw)
-        formatstring = "<{}III".format(
-            len(output) / self.SDRAM_PER_TIMER_TICK_PER_RECORDING)
-        elements = struct.unpack(formatstring, bytes(output))
         data = list()
-        for position in range(
-                0, len(output) / self.SDRAM_PER_TIMER_TICK_PER_RECORDING):
-            x = elements[0 + (position * 3)]
-            y = elements[1 + (position * 3)]
-            r = elements[2 + (position * 3)]
-            data.append((x, y, r))
-            
+        if len(output) != 0:
+            formatstring = "<{}III".format(
+                len(output) / self.SDRAM_PER_TIMER_TICK_PER_RECORDING)
+            elements = struct.unpack(formatstring, bytes(output))
+            for position in range(
+                    0, len(output) / self.SDRAM_PER_TIMER_TICK_PER_RECORDING):
+                x = elements[0 + (position * 3)]
+                y = elements[1 + (position * 3)]
+                r = elements[2 + (position * 3)]
+                data.append((x, y, r))
         return data
 
     def get_minimum_buffer_sdram_usage(self):

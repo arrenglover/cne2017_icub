@@ -29,6 +29,12 @@ static uint32_t aggregation_base_key;
 //! The recording flags
 static uint32_t recording_flags = 0;
 
+//! key bases
+typedef enum packet_identifiers{
+    COORDS_KEY_OFFSET = 0, RADIUS_KEY_OFFSET = 1, L_KEY_OFFSET = 2,
+    W_KEY_OFFSET = 3, DW_KEY_OFFSET = 4
+}packet_identifiers;
+
 //! human readable definitions of each region in SDRAM
 typedef enum regions_e {
     SYSTEM_REGION,
@@ -86,15 +92,9 @@ void user_callback(uint user0, uint user1){
     use(user1);
 }
 
-/****f*
- *
- * SUMMARY
- *
- * SYNOPSIS
- *  void update (uint ticks, uint b)
- *
- * SOURCE
- */
+//! \brief timer tick callback
+//! \param[in] ticks the number of tiemr tick callbacks (not accurate)
+//! \param[in] b: unknown
 void update(uint ticks, uint b) {
     use(b);
     use(ticks);
@@ -194,17 +194,7 @@ static bool initialize(uint32_t *timer_period) {
     return true;
 }
 
-/****f*
- *
- * SUMMARY
- *  This function is called at application start-up.
- *  It is used to register event callbacks and begin the simulation.
- *
- * SYNOPSIS
- *  int c_main()
- *
- * SOURCE
- */
+//! \brief main entrance method
 void c_main() {
     log_info("starting heat_demo\n");
 

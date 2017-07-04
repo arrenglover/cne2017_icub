@@ -3,9 +3,9 @@ ifndef SPINN_DIRS
     $(error SPINN_DIRS is not set.  Please define SPINN_DIRS (possibly by running "source setup" in the spinnaker package folder))
 endif
 
-APP = pfAgg
+APP = pf_agg
 BUILD_DIR = build/
-SOURCES = pfAgg.c
+SOURCES = pf_agg.c
 
 MAKEFILE_PATH := $(abspath $(lastword $(MAKEFILE_LIST)))
 CURRENT_DIR := $(dir $(MAKEFILE_PATH))

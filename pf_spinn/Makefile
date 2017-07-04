@@ -1,4 +1,4 @@
-BUILD_DIRS = pfAgg pfParticle
+BUILD_DIRS = pf_agg pf_particle
 
 all: $(BUILD_DIRS)
 	for d in $(BUILD_DIRS); do (cd $$d; "$(MAKE)") || exit $$?; done

@@ -7,6 +7,16 @@
 #include <simulation.h>
 #include <debug.h>
 
+//! data format
+typedef struct data_items_t{
+    uint32_t x;
+    uint32_t y;
+    uint32_t radius;
+    uint32_t l;
+    uint32_t w;
+    uint32_t d;
+}data_items_t;
+
 //! control value, which says how many timer ticks to run for before exiting
 static uint32_t simulation_ticks = 0;
 static uint32_t infinite_run = 0;
@@ -14,6 +24,24 @@ static uint32_t time = 0;
 
 //! The recording flags
 static uint32_t recording_flags = 0;
+
+//! base keys for the transmission of data
+static uint32_t has_key;
+static uint32_t base_transmission_key;
+static uint32_t has_record_key;
+static uint32_t base_record_key;
+
+//! flag for recording
+static uint32_t do_record;
+
+//! data items
+static uint32_t *reception_base_keys = NULL;
+static data_items_t *stored_data = NULL;
+
+//! key bases
+typedef enum packet_identifiers{
+    COORDS = 0, RADIUS = 1, L = 2, W = 3, D = 4, N_KEYS_RECEIVED = 5
+}packet_identifiers;
 
 //! human readable definitions of each region in SDRAM
 typedef enum regions_e {
@@ -36,9 +64,9 @@ typedef enum transmission_region_elements {
 
 //! human readable definitions of each element in the reception base key
 //! region.
-typedef enum reception_base_keys {
+typedef enum reception_base_keys_region_items{
     N_KEYS, START_OF_KEYS
-} reception_base_keys;
+}reception_base_keys_region_items;
 
 //! human readable definitions of each element in the config region
 typedef enum config_region_items {
@@ -46,11 +74,25 @@ typedef enum config_region_items {
 }config_region_items;
 
 
+//! \brief callback for when packet has payload (agg)
+//! \param[in] key: the key received
+//! \param[in] payload: the payload received
 void receive_data_payload(uint key, uint payload) {
     use(key);
     use(payload);
 }
 
+//! \brief callback when packet with no payload is received (retina)
+//! \param[in] key: the key received
+//! \param[in] payload: unused. is set to 0
+void receive_data_no_payload(uint key, uint payload) {
+    use(payload);
+    use(key);
+    log_error("Should never have received this packet. %d"
+              "Aggr's only receive packets with payloads.", key);
+}
+
+//! \brief records data via the record interface
 void record_data() {
 
 }
@@ -68,19 +110,22 @@ static bool initialise_recording(){
     return success;
 }
 
+//! \brief callback for when resuming
 void resume_callback() {
     time = UINT32_MAX;
 }
 
-/****f*
- *
- * SUMMARY
- *
- * SYNOPSIS
- *  void update (uint ticks, uint b)
- *
- * SOURCE
- */
+//! \brief callback for user
+//! \param[in] random param1
+//! \param[in] random param2
+void user_callback(uint user0, uint user1){
+    use(user0);
+    use(user1);
+}
+
+//! \brief timer tick callback
+//! \param[in] ticks the number of tiemr tick callbacks (not accurate)
+//! \param[in] b: unknown
 void update(uint ticks, uint b) {
     use(b);
     use(ticks);
@@ -101,26 +146,49 @@ void update(uint ticks, uint b) {
 
         // falls into the pause resume mode of operating
         simulation_handle_pause_resume(resume_callback);
-
         return;
-
-    }
-
-    if (time == 1) {
-        record_data();
-    } else if (time ==  100) {
-        iobuf_data();
     }
 
     // trigger buffering_out_mechanism
-    log_info("recording flags is %d", recording_flags);
     if (recording_flags > 0) {
-        log_info("doing timer tick update\n");
         recording_do_timestep_update(time);
-        log_info("done timer tick update\n");
     }
 }
 
+//! \brief reads the transmission data region data items
+//! \param[in] address: dsg address in sdram memory space
+//! \return bool which is successful if read correctly, false otherwise
+static bool read_transmission_region(address_t address){
+    has_key = address[HAS_KEY];
+    base_transmission_key = address[MY_KEY];
+    has_record_key = address[RECORD_HAS_KEY];
+    base_record_key = address[RECORD_KEY];
+    return true;
+}
+
+//! \brief reads the reception data region data items
+//! \param[in] address: dsg address in sdram memory space
+//! \return bool which is successful if read correctly, false otherwise
+static bool read_reception_region(address_t address){
+    uint32_t n_keys = address[N_KEYS];
+    reception_base_keys = (uint32_t*) spin1_malloc(n_keys * sizeof(uint32_t));
+    stored_data = (data_items_t*) spin1_malloc(n_keys * sizeof(data_items_t));
+    return true;
+}
+
+//! \brief reads the config data region data items
+//! \param[in] address: dsg address in sdram memory space
+//! \return bool which is successful if read correctly, false otherwise
+static bool read_config_region(address_t address){
+    do_record = address[DO_RECORD];
+    return true;
+}
+
+
+
+//! \brief main init function
+//! \param[in] timer_period. the time set for the timer
+//! \return bool true if successful, false otherwise
 static bool initialize(uint32_t *timer_period) {
     log_info("Initialise: started\n");
 
@@ -130,6 +198,23 @@ static bool initialize(uint32_t *timer_period) {
     // Read the header
     if (!data_specification_read_header(address)) {
         log_error("failed to read the data spec header");
+        return false;
+    }
+
+    // get transmission data
+    if (!read_transmission_region(
+            data_specification_get_region(TRANSMISSION_DATA, address))){
+        return false;
+    }
+
+    // get reception data
+    if (!read_reception_region(
+            data_specification_get_region(RECEPTION_BASE_KEYS, address))){
+        return false;
+    }
+
+    // get reception data
+    if (!read_config_region(data_specification_get_region(CONFIG, address))){
         return false;
     }
 
@@ -144,17 +229,7 @@ static bool initialize(uint32_t *timer_period) {
     return true;
 }
 
-/****f*
- *
- * SUMMARY
- *  This function is called at application start-up.
- *  It is used to register event callbacks and begin the simulation.
- *
- * SYNOPSIS
- *  int c_main()
- *
- * SOURCE
- */
+//! \brief main entrance method
 void c_main() {
     log_info("starting heat_demo\n");
 
@@ -163,13 +238,15 @@ void c_main() {
 
     // initialise the model
     if (!initialize(&timer_period)) {
+        log_error("failed to init");
         rt_error(RTE_SWERR);
     }
 
     // initialise the recording section
     // set up recording data structures
     if(!initialise_recording()){
-         rt_error(RTE_SWERR);
+        log_error("faield to init recording");
+        rt_error(RTE_SWERR);
     }
 
     // set timer tick value to configured value
@@ -177,7 +254,8 @@ void c_main() {
     spin1_set_timer_tick(timer_period);
 
     // register callbacks
-    spin1_callback_on(MCPL_PACKET_RECEIVED, receive_data, MC_PACKET);
+    spin1_callback_on(MCPL_PACKET_RECEIVED, receive_data_payload, MC_PACKET);
+    spin1_callback_on(MC_PACKET_RECEIVED, receive_data_no_payload, MC_PACKET);
     spin1_callback_on(TIMER_TICK, update, TIMER);
 
     // start execution
