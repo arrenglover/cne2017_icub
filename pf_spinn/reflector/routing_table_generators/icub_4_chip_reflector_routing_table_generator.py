@@ -32,13 +32,13 @@ class ICub4ChipReflectorRoutingTableGenerator(object):
         chip_0_1_router_table = MulticastRoutingTable(0, 1)
 
         # add entry to table
-        chip_0_0_router_table.add_mutlicast_routing_entry(
+        chip_0_0_router_table.add_multicast_routing_entry(
             multicast_routing_entry_0_0)
         progress_bar.update()
-        chip_0_1_router_table.add_mutlicast_routing_entry(
+        chip_0_1_router_table.add_multicast_routing_entry(
             multicast_routing_entry_0_1_1_0)
         progress_bar.update()
-        chip_1_0_router_table.add_mutlicast_routing_entry(
+        chip_1_0_router_table.add_multicast_routing_entry(
             multicast_routing_entry_0_1_1_0)
 
         # add to container
@@ -49,7 +49,7 @@ class ICub4ChipReflectorRoutingTableGenerator(object):
         progress_bar.end()
 
         # return tables to stack
-        return {"router_tables": routing_tables}
+        return routing_tables
 
 
 
