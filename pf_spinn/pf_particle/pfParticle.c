@@ -24,7 +24,7 @@ static uint32_t base_key;
 
 //! recpetion key params
 static uint32_t retina_base_key;
-
+static uint32_t aggregation_base_key;
 
 //! The recording flags
 static uint32_t recording_flags = 0;
@@ -49,7 +49,7 @@ typedef enum transmission_region_elements {
 
 //! human readable definitions of each element in the reception region
 typedef enum reception_region_elements {
-    RETINA_BASE_KEY = 0
+    RETINA_BASE_KEY = 0, AGGREGATION_BASE_KEY = 1
 } reception_region_elements;
 
 //! human readable definitions of each element in the config region
@@ -57,6 +57,9 @@ typedef enum config_region_elements {
     X_COORD = 0, Y_COORD = 1, RADIUS = 2, PACKET_THRESHOLD = 3
 } config_region_elements;
 
+//! \brief callback for when packet has payload (agg)
+//! \param[in] key: the key received
+//! \param[in] payload: the payload received
 void receive_data_payload(uint key, uint payload) {
     use(key);
     use(payload);
@@ -143,6 +146,7 @@ bool read_transmission_keys(address_t address){
 //! \return bool which is successful if read correctly, false otherwise
 bool read_reception_keys(address_t address){
     retina_base_key = address[RETINA_BASE_KEY];
+    aggregation_base_key = address[AGGREGATION_BASE_KEY];
     return true;
 }
 

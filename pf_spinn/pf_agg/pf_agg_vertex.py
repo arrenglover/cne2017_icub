@@ -104,7 +104,7 @@ class PfAggVertex(
 
     @overrides(AbstractHasAssociatedBinary.get_binary_file_name)
     def get_binary_file_name(self):
-        return "pfAgg.aplx"
+        return "pf_agg.aplx"
 
     @overrides(AbstractHasAssociatedBinary.get_binary_start_type)
     def get_binary_start_type(self):
@@ -184,6 +184,7 @@ class PfAggVertex(
         # writing particle keys
         spec.switch_write_focus(
             region=self.DATA_REGIONS.RECEPTION_BASE_KEYS.value)
+        spec.write_value(len(edges))
         for e in edges:
             edge_key = routing_info.get_first_key_for_edge(e)
             spec.write_value(edge_key)

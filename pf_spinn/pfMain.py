@@ -17,8 +17,8 @@ import spinnaker_graph_front_end as front_end
 
 # import graph components
 from pacman.model.graphs.machine import MachineEdge
-from pf_spinn.pfAgg.PfAggVertex import PfAggVertex
-from pf_spinn.pfParticle.PfParticleVertex import PfParticleVertex
+from pf_spinn.pf_agg.pf_agg_vertex import PfAggVertex
+from pf_spinn.pf_particle.pf_particle_vertex import PfParticleVertex
 from pf_spinn.ICUB_input_vertex.ICUB_input_vertex import ICUBInputVertex
 from pf_spinn.ICUB_output_vertex.ICUB_output_vertex import ICUBOutputVertex
 

@@ -2,6 +2,8 @@ from pacman.model.decorators.overrides import overrides
 from pacman.model.graphs.machine import MachineVertex
 from pacman.model.resources import CPUCyclesPerTickResource, DTCMResource
 from pacman.model.resources import ResourceContainer, SDRAMResource
+from pf_spinn.ICUB_input_vertex.ICUB_input_vertex import ICUBInputVertex
+from pf_spinn.pf_agg.pf_agg_vertex import PfAggVertex
 
 from spinn_front_end_common.utilities import constants
 from spinn_front_end_common.interface.simulation import simulation_utilities
@@ -65,7 +67,7 @@ class PfParticleVertex(
 
     @overrides(AbstractHasAssociatedBinary.get_binary_file_name)
     def get_binary_file_name(self):
-        return "pfParticle.aplx"
+        return "pf_particle.aplx"
 
     @overrides(AbstractHasAssociatedBinary.get_binary_start_type)
     def get_binary_start_type(self):
@@ -107,6 +109,14 @@ class PfParticleVertex(
 
         # write reception key
         spec.switch_write_focus(self.DATA_REGIONS.RECEPTION_BASE_KEYS.value)
+        input_vertex = None
+        agg_vertex = None
+        for edge in machine_graph.get_edges_ending_at_vertex(self):
+            if isinstance(edge.pre_vertex, ICUBInputVertex):
+                input_vertex = edge.pre_vertex
+            if isinstance(edge.pre_vertex, PfAggVertex):
+                agg_vertex = edge.pre_vertex
+
         input_vertex = \
             list(machine_graph.get_edges_ending_at_vertex(self))[0].pre_vertex
         routing_key = routing_info.get_first_key_from_pre_vertex(
@@ -114,6 +124,8 @@ class PfParticleVertex(
         if routing_key is None:
             raise Exception("The particle is not receiving from the retina")
         spec.write_value(routing_key)
+
+
 
         # write config params
         spec.switch_write_focus(self.DATA_REGIONS.CONFIG.value)

@@ -18,7 +18,10 @@ static uint32_t recording_flags = 0;
 //! human readable definitions of each region in SDRAM
 typedef enum regions_e {
     SYSTEM_REGION,
-    RECORDED_DATA
+    TRANSMISSION_DATA,
+    RECEPTION_BASE_KEYS,
+    RECORDED_DATA,
+    CONFIG
 } regions_e;
 
 //! values for the priority for each callback
@@ -28,9 +31,19 @@ typedef enum callback_priorities{
 
 //! human readable definitions of each element in the transmission region
 typedef enum transmission_region_elements {
-    HAS_KEY, MY_KEY
+    HAS_KEY, MY_KEY, RECORD_HAS_KEY, RECORD_KEY
 } transmission_region_elements;
 
+//! human readable definitions of each element in the reception base key
+//! region.
+typedef enum reception_base_keys {
+    N_KEYS, START_OF_KEYS
+} reception_base_keys;
+
+//! human readable definitions of each element in the config region
+typedef enum config_region_items {
+    DO_RECORD
+}config_region_items;
 
 
 void receive_data_payload(uint key, uint payload) {
