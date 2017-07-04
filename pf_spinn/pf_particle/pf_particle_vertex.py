@@ -39,7 +39,7 @@ class PfParticleVertex(
 
     CORE_APP_IDENTIFIER = 0xBEEF
     TRANSMISSION_DATA_SIZE = 8
-    RECEPTION_KEY_SIZE = 4
+    RECEPTION_KEY_SIZE = 8
     CONFIG_PARAM_SIZE = 16
 
     def __init__(self, x, y, r, packet_threshold, label, constraints=None):
@@ -117,15 +117,20 @@ class PfParticleVertex(
             if isinstance(edge.pre_vertex, PfAggVertex):
                 agg_vertex = edge.pre_vertex
 
-        input_vertex = \
-            list(machine_graph.get_edges_ending_at_vertex(self))[0].pre_vertex
+        # retina key
         routing_key = routing_info.get_first_key_from_pre_vertex(
             input_vertex, app_constants.EDGE_PARTITION_EVENT)
         if routing_key is None:
             raise Exception("The particle is not receiving from the retina")
         spec.write_value(routing_key)
 
-
+        # agg key
+        routing_key = routing_info.get_first_key_from_pre_vertex(
+            agg_vertex, app_constants.EDGE_PARTITION_RE_SAMPLE)
+        if routing_key is None:
+            raise Exception(
+                "The particle is not receiving from the aggregation core")
+        spec.write_value(routing_key)
 
         # write config params
         spec.switch_write_focus(self.DATA_REGIONS.CONFIG.value)
