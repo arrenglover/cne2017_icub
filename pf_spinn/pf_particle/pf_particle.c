@@ -239,10 +239,43 @@ void particleResample() {
 
 }
 
+void sendstate() {
+
+    log_info("sending state");
+
+    if(has_key) {
+        if (my_tdma_id != 0){
+           uint32_t expected_time = my_tdma_id * 300 + tc[T1_COUNT];
+           while (tc[T1_COUNT] > expected_time) {
+              return;
+           }
+        }
+        //send a message out
+        while (!spin1_send_mc_packet(base_key + COORDS_KEY_OFFSET, codexy(x, y), WITH_PAYLOAD)) {
+            spin1_delay_us(1);
+        }
+        while (!spin1_send_mc_packet(base_key + RADIUS_KEY_OFFSET, float_to_int(r), WITH_PAYLOAD)) {
+            spin1_delay_us(1);
+        }
+        while (!spin1_send_mc_packet(base_key + L_KEY_OFFSET, float_to_int(l), WITH_PAYLOAD)) {
+            spin1_delay_us(1);
+        }
+        while (!spin1_send_mc_packet(base_key + W_KEY_OFFSET, float_to_int(w), WITH_PAYLOAD)) {
+            spin1_delay_us(1);
+        }
+        while (!spin1_send_mc_packet(base_key + N_KEY_OFFSET, n, WITH_PAYLOAD)) {
+            spin1_delay_us(1);
+        }
+    }
+
+}
+
 //! \brief callback for user
 //! \param[in] random param1
 //! \param[in] random param2
 void user_callback(uint user0, uint user1) {
+
+    log_info("User Callback (particle processing) run");
     use(user0);
     use(user1);
 
@@ -290,31 +323,8 @@ void user_callback(uint user0, uint user1) {
     concludeLikelihood();
 
 
+    sendstate();
 
-    if(has_key) {
-        if (my_tdma_id != 0){
-           uint32_t expected_time = my_tdma_id * 300 + tc[T1_COUNT];
-           while (tc[T1_COUNT] > expected_time) {
-              return;
-           }
-        }
-        //send a message out
-        while (!spin1_send_mc_packet(base_key + COORDS_KEY_OFFSET, codexy(x, y), WITH_PAYLOAD)) {
-            spin1_delay_us(1);
-        }
-        while (!spin1_send_mc_packet(base_key + RADIUS_KEY_OFFSET, float_to_int(r), WITH_PAYLOAD)) {
-            spin1_delay_us(1);
-        }
-        while (!spin1_send_mc_packet(base_key + L_KEY_OFFSET, float_to_int(l), WITH_PAYLOAD)) {
-            spin1_delay_us(1);
-        }
-        while (!spin1_send_mc_packet(base_key + W_KEY_OFFSET, float_to_int(w), WITH_PAYLOAD)) {
-            spin1_delay_us(1);
-        }
-        while (!spin1_send_mc_packet(base_key + N_KEY_OFFSET, n, WITH_PAYLOAD)) {
-            spin1_delay_us(1);
-        }
-    }
 
 
 }
@@ -345,6 +355,12 @@ void update(uint ticks, uint b) {
         return;
 
     }
+
+    if(time == 0) {
+        sendstate();
+    }
+
+
 }
 
 //! \brief reads the config data region data items

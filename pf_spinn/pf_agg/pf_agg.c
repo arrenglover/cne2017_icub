@@ -161,6 +161,8 @@ void decodexy(uint32_t coded, float *x, float *y) {
 //! \param[in] random param2
 void user_callback(uint user0, uint user1) {
 
+    log_info("Aggregator user callback");
+
     use(user0);
     use(user1);
 
@@ -248,6 +250,11 @@ void update(uint ticks, uint b) {
     if (recording_flags > 0) {
         recording_do_timestep_update(time);
     }
+
+    if(time % 1000 == 0) {
+        log_info("Data recieved: %d", circular_buffer_size(particle_buffer));
+    }
+
 }
 
 //! \brief reads the transmission data region data items
