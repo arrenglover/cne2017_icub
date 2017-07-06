@@ -89,7 +89,7 @@ void receive_data_payload(uint key, uint payload) {
         log_error("Could not add agg data");
     }
 
-    if(circular_buffer_size(agg_buffer) > 10) {//or 40?
+    if(circular_buffer_size(agg_buffer) > 9) {//or 40?
         spin1_trigger_user_event(0, 0);
     }
 
@@ -257,13 +257,13 @@ void user_callback(uint user0, uint user1) {
             decodexy(payload, &nx, &ny);
             break;
         case(AGGREGATION_BASE_KEY + RADIUS_KEY_OFFSET):
-            nr = payload;
+            nr = int_to_float(payload);
             break;
         case(AGGREGATION_BASE_KEY + L_KEY_OFFSET):
-            nl = payload;
+            nl = int_to_float(payload);
             break;
         case(AGGREGATION_BASE_KEY + W_KEY_OFFSET):
-            nw = payload;
+            nw = int_to_float(payload);
             break;
         case(AGGREGATION_BASE_KEY + N_KEY_OFFSET):
             nn = payload;
