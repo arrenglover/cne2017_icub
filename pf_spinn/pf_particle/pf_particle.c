@@ -1,11 +1,19 @@
 
 //! imports
+#include <stdlib.h>
+#include <math.h>
 #include "spin1_api.h"
 #include "common-typedefs.h"
 #include <data_specification.h>
 #include <recording.h>
 #include <simulation.h>
 #include <debug.h>
+#include <circular_buffer.h>
+
+#define ANG_BUCKETS 64
+#define INLIER_PAR 2
+#define MIN_LIKE 10
+#define SIGMA_SCALER 4.0f
 
 //! control value, which says how many timer ticks to run for before exiting
 static uint32_t simulation_ticks = 0;
@@ -13,10 +21,16 @@ static uint32_t infinite_run = 0;
 static uint32_t time = 0;
 
 //! parameters for this c code
-static uint32_t x_coord;
-static uint32_t y_coord;
-static uint32_t radius;
-static uint32_t packet_threshold;
+static float x = 64.0f, nx = -1.0f;
+static float y = 64.0f, ny = -1.0f;
+static float r = 30.0f, nr = -1.0f;
+static float l = 0.0f, nl = -1.0f;
+static float w = 1.0f, nw = -1.0f;
+static uint32_t n = 0, nn = 0;
+
+static float L[ANG_BUCKETS];
+static uint32_t agg_receive_count;
+static circular_buffer retina_buffer, agg_buffer;
 
 //! transmission key
 static uint32_t has_key;
@@ -30,9 +44,9 @@ static uint32_t aggregation_base_key;
 static uint32_t recording_flags = 0;
 
 //! key bases
-typedef enum packet_identifiers{
+typedef enum packet_identifiers {
     COORDS_KEY_OFFSET = 0, RADIUS_KEY_OFFSET = 1, L_KEY_OFFSET = 2,
-    W_KEY_OFFSET = 3, DW_KEY_OFFSET = 4
+    W_KEY_OFFSET = 3, N_KEY_OFFSET = 4
 }packet_identifiers;
 
 //! human readable definitions of each region in SDRAM
@@ -44,7 +58,7 @@ typedef enum regions_e {
 } regions_e;
 
 //! values for the priority for each callback
-typedef enum callback_priorities{
+typedef enum callback_priorities {
     MC_PACKET = -1, SDP_DMA = 0, USER = 3, TIMER = 2
 } callback_priorities;
 
@@ -67,8 +81,18 @@ typedef enum config_region_elements {
 //! \param[in] key: the key received
 //! \param[in] payload: the payload received
 void receive_data_payload(uint key, uint payload) {
-    use(key);
-    use(payload);
+
+    if (!circular_buffer_add(agg_buffer, key)) {
+        log_error("Could not add agg data");
+    }
+    if (!circular_buffer_add(agg_buffer, payload)) {
+        log_error("Could not add agg data");
+    }
+
+    if(circular_buffer_size(agg_buffer) > 10) {//or 40?
+        spin1_trigger_user_event(0, 0);
+    }
+
 }
 
 //! \brief callback when packet with no payload is received (retina)
@@ -76,7 +100,11 @@ void receive_data_payload(uint key, uint payload) {
 //! \param[in] payload: unused. is set to 0
 void receive_data_no_payload(uint key, uint payload) {
     use(payload);
-    use(key);
+
+    if (!circular_buffer_add(retina_buffer, key)) {
+        log_error("Could not add event");
+    }
+
 }
 
 //! \brief callback for when resuming
@@ -84,12 +112,205 @@ void resume_callback() {
     time = UINT32_MAX;
 }
 
+//! \brief converts a int to a float via bit wise conversion
+//! \param[in] y: the int to convert
+//! \param[out] the converted float
+static inline float int_to_float( int data){
+    union { float x; int y; } cast_union;
+    cast_union.y = data;
+    return cast_union.x;
+}
+static inline int float_to_int( float data){
+    union { float x; int y; } cast_union;
+    cast_union.x = data;
+    return cast_union.y;
+}
+
+void concludeLikelihood() {
+
+    l = 0;
+    for(int i = 0; i < ANG_BUCKETS; i++) {
+        l += L[i];
+    }
+
+    if(l < MIN_LIKE) {
+        w = MIN_LIKE * w;
+    } else {
+        w = l * w;
+    }
+
+}
+
+uint32_t codexy(float x, float y)
+{
+    return ((int)x & 0x1FF) + (((int)y & 0xFF) << 9);
+}
+
+void decodexy(uint32_t coded, float *x, float *y) {
+
+    *x = coded & 0x1FF;
+    *y = (coded >> 9) & 0xFF;
+
+}
+
+void predict(float sigma) {
+
+    //use a flat distribution?
+    x += 2.0 * sigma * rand() / RAND_MAX - sigma;
+    y += 2.0 * sigma * rand() / RAND_MAX - sigma;
+    r += 2.0 * sigma * rand() / RAND_MAX - sigma;
+
+}
+
+void incLikelihood(float vx, float vy) {
+
+    //get the next input packet in the queue
+
+
+    //update the L vector based on the event
+    float dx = vx - x;
+    float dy = vy - y;
+
+    float d = sqrt(dx * dx + dy * dy) - r;
+    if(d < INLIER_PAR) {
+
+        int a = 0.5 + (ANG_BUCKETS-1) * (atan2(dy, dx) + M_PI) / (2.0 * M_PI);
+
+        if(d > -INLIER_PAR) {
+            //inlier event
+            if(L[a] < 1.0) {
+                L[a] = 1.0;
+                n++;
+            }
+        } else {
+            //outlier event
+            if(L[a] > 0.0) {
+                L[a] = 0;
+                n++;
+            }
+        }
+    }
+}
+
+void processInput() {
+
+    uint32_t * qcopy;
+    uint32_t current_key, buffersize;
+    float vx, vy;
+
+    uint cpsr = spin1_int_disable();
+
+    buffersize = circular_buffer_size(retina_buffer);
+    //copy data
+    qcopy = spin1_malloc(buffersize * sizeof(uint32_t));
+
+    for(uint32_t i = 0; i < buffersize; i++) {
+        if(!circular_buffer_get_next(retina_buffer, &current_key))
+            log_error("Could not get key from buffer");
+        qcopy[i] = current_key;
+    }
+
+    spin1_mode_restore(cpsr);
+
+
+    for(uint32_t i = 0; i < buffersize; i++) {
+        decodexy(qcopy[i], &vx, &vy);
+        incLikelihood(vx, vy);
+    }
+
+}
+
+void particleResample() {
+
+    w = nw;
+
+    if(nl > 0) {
+        x = nx;
+        y = ny;
+        r = nr;
+        l = nl;
+
+        for(int i = 0; i < ANG_BUCKETS; i++) {
+            L[i] = l / ANG_BUCKETS;
+        }
+
+    }
+
+}
+
 //! \brief callback for user
 //! \param[in] random param1
 //! \param[in] random param2
-void user_callback(uint user0, uint user1){
+void user_callback(uint user0, uint user1) {
     use(user0);
     use(user1);
+
+    for(uint32_t i = 0; i < 5; i++) {
+        uint32_t key, payload;
+        if(!circular_buffer_get_next(agg_buffer, &key))
+            log_error("Could not get key from buffer");
+        if(!circular_buffer_get_next(agg_buffer, &payload))
+            log_error("Could not get payload from buffer");
+
+        switch(key) {
+        case(AGGREGATION_BASE_KEY + COORDS_KEY_OFFSET):
+            decodexy(payload, &nx, &ny);
+            break;
+        case(AGGREGATION_BASE_KEY + RADIUS_KEY_OFFSET):
+            nr = payload;
+            break;
+        case(AGGREGATION_BASE_KEY + L_KEY_OFFSET):
+            nl = payload;
+            break;
+        case(AGGREGATION_BASE_KEY + W_KEY_OFFSET):
+            nw = payload;
+            break;
+        case(AGGREGATION_BASE_KEY + N_KEY_OFFSET):
+            nn = payload;
+            break;
+        default:
+            log_error("Switch on Key (%d) not working", key);
+        }
+
+    }
+
+    if(nx < 0 || ny < 0 || nr < 0 || nw < 0 || nl < 0) {
+        log_error("Packet Loss from Aggregator");
+        return;
+    }
+
+    particleResample();
+    nx = ny = nr = nl = nw = -1;
+    nn = 0;
+
+    predict(SIGMA_SCALER * n / ANG_BUCKETS);
+
+    processInput();
+    concludeLikelihood();
+
+
+
+    if(has_key) {
+
+        //send a message out
+        while (!spin1_send_mc_packet(base_key + COORDS_KEY_OFFSET, codexy(x, y), WITH_PAYLOAD)) {
+            spin1_delay_us(1);
+        }
+        while (!spin1_send_mc_packet(base_key + RADIUS_KEY_OFFSET, float_to_int(r), WITH_PAYLOAD)) {
+            spin1_delay_us(1);
+        }
+        while (!spin1_send_mc_packet(base_key + L_KEY_OFFSET, float_to_int(l), WITH_PAYLOAD)) {
+            spin1_delay_us(1);
+        }
+        while (!spin1_send_mc_packet(base_key + W_KEY_OFFSET, float_to_int(w), WITH_PAYLOAD)) {
+            spin1_delay_us(1);
+        }
+        while (!spin1_send_mc_packet(base_key + N_KEY_OFFSET, n, WITH_PAYLOAD)) {
+            spin1_delay_us(1);
+        }
+    }
+
+
 }
 
 //! \brief timer tick callback
@@ -124,10 +345,10 @@ void update(uint ticks, uint b) {
 //! \param[in] address: dsg address in sdram memory space
 //! \return bool which is successful if read correctly, false otherwise
 bool read_config(address_t address){
-    x_coord = address[X_COORD];
-    y_coord = address[Y_COORD];
-    radius = address[RADIUS];
-    packet_threshold = address[PACKET_THRESHOLD];
+    x = address[X_COORD];
+    y = address[Y_COORD];
+    r = address[RADIUS];
+    n = address[PACKET_THRESHOLD];
     return true;
 }
 
@@ -191,12 +412,29 @@ static bool initialize(uint32_t *timer_period) {
         return false;
     }
 
+    // initialise my input_buffer for receiving packets
+    log_info("build buffer");
+    retina_buffer = circular_buffer_initialize(512);
+    if (retina_buffer == 0){
+        return false;
+    }
+    log_info("retina_buffer initialised");
+
+    // initialise my input_buffer for receiving packets
+    log_info("build buffer");
+    agg_buffer = circular_buffer_initialize(32);
+    if (agg_buffer == 0){
+        return false;
+    }
+    log_info("agg_buffer initialised");
+
     return true;
 }
 
+
 //! \brief main entrance method
 void c_main() {
-    log_info("starting heat_demo\n");
+    log_info("starting particle filter\n");
 
     // Load DTCM data
     uint32_t timer_period;
@@ -215,6 +453,7 @@ void c_main() {
     spin1_callback_on(MCPL_PACKET_RECEIVED, receive_data_payload, MC_PACKET);
     spin1_callback_on(MC_PACKET_RECEIVED, receive_data_no_payload, MC_PACKET);
     spin1_callback_on(TIMER_TICK, update, TIMER);
+    spin1_callback_on(USER_EVENT, user_callback, USER);
 
     // start execution
     log_info("Starting\n");

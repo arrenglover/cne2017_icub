@@ -39,7 +39,7 @@ front_end.setup(n_chips_required=n_chips_required,
 # state variables
 machine_time_step = 1000
 time_scale_factor = 1
-n_particles = 100
+n_particles = 20
 spinnaker_link_used = 0
 packets_threshold = 30
 

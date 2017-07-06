@@ -28,6 +28,6 @@ front_end.add_machine_vertex(
             HelloWorldVertex,
             {},
             label="Hello World at x ".format())
-front_end.run(60000)
+front_end.run(10000)
 
 front_end.stop()
