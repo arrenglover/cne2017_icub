@@ -37,6 +37,7 @@ static uint32_t do_record;
 //! data items
 static uint32_t *reception_base_keys = NULL;
 static data_items_t *stored_data = NULL;
+static uint32_t n_particles = 0;
 
 //! key bases
 typedef enum packet_identifiers{
@@ -173,6 +174,7 @@ static bool read_reception_region(address_t address){
     uint32_t n_keys = address[N_KEYS];
     reception_base_keys = (uint32_t*) spin1_malloc(n_keys * sizeof(uint32_t));
     stored_data = (data_items_t*) spin1_malloc(n_keys * sizeof(data_items_t));
+    n_particles = n_keys;
     return true;
 }
 
