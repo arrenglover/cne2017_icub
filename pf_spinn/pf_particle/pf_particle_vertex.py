@@ -99,8 +99,11 @@ class PfParticleVertex(
 
         # write transmission key
         spec.switch_write_focus(self.DATA_REGIONS.TRANSMISSION_DATA.value)
-        routing_key = routing_info.get_first_key_from_partition(
-            "Particle State")
+
+        routing_key = routing_info.get_first_key_from_pre_vertex(
+            self, app_constants.EDGE_PARTITION_PARTICLE_STATE)
+        if routing_key is None:
+            raise Exception("FUCK")
         if routing_key is None:
             spec.write_value(0)
             spec.write_value(0)

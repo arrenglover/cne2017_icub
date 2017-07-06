@@ -33,7 +33,7 @@ static float L[ANG_BUCKETS];
 static circular_buffer retina_buffer, agg_buffer;
 
 //! transmission key
-static uint32_t has_key;
+static uint32_t i_has_key;
 static uint32_t base_key;
 static uint32_t my_tdma_id;
 
@@ -242,15 +242,24 @@ void particleResample() {
 void sendstate() {
 
     log_info("sending state");
+    if(i_has_key == 1) {
+       uint32_t current_time = tc[T1_COUNT];
+       int32_t expected_time = 0;
 
-    if(has_key) {
-        if (my_tdma_id != 0){
-           uint32_t expected_time = my_tdma_id * 300 + tc[T1_COUNT];
-           while (tc[T1_COUNT] > expected_time) {
-              return;
-           }
-        }
+       if(current_time < (my_tdma_id * 300)){
+           expected_time =
+               (1000 * sv->cpu_clk) - ((my_tdma_id * 300) - current_time);
+       }
+       else{
+           expected_time = current_time - (my_tdma_id * 300);
+       }
+
+       while (tc[T1_COUNT] > expected_time) {
+          return;
+       }
+
         //send a message out
+        log_info("sending packets");
         while (!spin1_send_mc_packet(base_key + COORDS_KEY_OFFSET, codexy(x, y), WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
@@ -267,7 +276,6 @@ void sendstate() {
             spin1_delay_us(1);
         }
     }
-
 }
 
 //! \brief callback for user
@@ -378,7 +386,7 @@ bool read_config(address_t address){
 //! \param[in] address: dsg address in sdram memory space
 //! \return bool which is successful if read correctly, false otherwise
 bool read_transmission_keys(address_t address){
-    has_key = address[HAS_KEY];
+    i_has_key = address[HAS_KEY];
     base_key = address[MY_KEY];
     my_tdma_id = address[TDMA_ID];
     return true;

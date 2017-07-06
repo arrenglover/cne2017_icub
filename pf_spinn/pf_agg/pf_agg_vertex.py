@@ -155,8 +155,10 @@ class PfAggVertex(
         spec.switch_write_focus(
             region=self.DATA_REGIONS.TRANSMISSION_DATA.value)
         
-        key1 = routing_info.get_first_key_from_partition(
-            app_constants.EDGE_PARTITION_RE_SAMPLE)
+        key1 = routing_info.get_first_key_from_pre_vertex(
+            self, app_constants.EDGE_PARTITION_RE_SAMPLE)
+        if key1 is None:
+            raise Exception("FUCKING IDIOT")
         if key1 is None:
             spec.write_value(0)
             spec.write_value(0)
@@ -165,8 +167,11 @@ class PfAggVertex(
             spec.write_value(key1)
 
         if self._transmit_target_position:
-            key2 = routing_info.get_first_key_from_partition(
-                app_constants.EDGE_PARTITION_TARGET_POSITION)
+            key2 = routing_info.get_first_key_from_pre_vertex(
+                self, app_constants.EDGE_PARTITION_TARGET_POSITION)
+            if key2 is None:
+                raise Exception("fucking idiot")
+
             if key2 is None:
                 spec.write_value(0)
                 spec.write_value(0)
