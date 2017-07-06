@@ -184,6 +184,8 @@ class PfAggVertex(
         # writing particle keys
         spec.switch_write_focus(
             region=self.DATA_REGIONS.RECEPTION_BASE_KEYS.value)
+        if len(edges) != self.n_particles:
+            raise Exception("something wrong")
         spec.write_value(len(edges))
         for e in edges:
             edge_key = routing_info.get_first_key_for_edge(e)
