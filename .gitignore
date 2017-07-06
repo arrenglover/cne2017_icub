@@ -4,3 +4,4 @@ CMakeLists.txt.user
 *.pyc
 *.aplx
 .idea
+*.orig
