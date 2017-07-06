@@ -163,7 +163,7 @@ void decodexy(uint32_t coded, float *x, float *y) {
 void user_callback(uint user0, uint user1) {
 
     log_info("Aggregator user callback");
-
+    circular_buffer_clear(particle_buffer);
     use(user0);
     use(user1);
 
