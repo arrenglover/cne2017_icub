@@ -42,7 +42,7 @@ class PfParticleVertex(
     RECEPTION_KEY_SIZE = 8
     CONFIG_PARAM_SIZE = 16
 
-    def __init__(self, x, y, r, packet_threshold, label, constraints=None):
+    def __init__(self, x, y, r, packet_threshold, label, id, constraints=None):
         MachineVertex.__init__(self, label=label, constraints=constraints)
         
         AbstractProvidesNKeysForPartition.__init__(self)
@@ -52,6 +52,7 @@ class PfParticleVertex(
         self._r = r
         self._packet_threshold = packet_threshold
         self._placement = None
+        self._id = id
 
     @property
     @overrides(MachineVertex.resources_required)
@@ -103,9 +104,11 @@ class PfParticleVertex(
         if routing_key is None:
             spec.write_value(0)
             spec.write_value(0)
+            spec.write_value(0)
         else:
             spec.write_value(1)
             spec.write_value(routing_key)
+            spec.write_value(self._id)
 
         # write reception key
         spec.switch_write_focus(self.DATA_REGIONS.RECEPTION_BASE_KEYS.value)

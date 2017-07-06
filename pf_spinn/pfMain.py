@@ -59,7 +59,7 @@ for x in range(0, n_particles):
     vertex = PfParticleVertex(
         x=random.randint(0, 304), y=random.randint(0, 240),
         r=random.randint(0, 30), packet_threshold=packets_threshold,
-        label="Particle {}".format(x))
+        label="Particle {}".format(x), id=x)
     front_end.add_machine_vertex_instance(vertex)
     particle_list.append(vertex)
 

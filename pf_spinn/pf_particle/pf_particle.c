@@ -14,6 +14,7 @@
 #define INLIER_PAR 2
 #define MIN_LIKE 10
 #define SIGMA_SCALER 4.0f
+#define TDMA_WAIT_PERIOD = 300
 
 //! control value, which says how many timer ticks to run for before exiting
 static uint32_t simulation_ticks = 0;
@@ -29,12 +30,12 @@ static float w = 1.0f, nw = -1.0f;
 static uint32_t n = 0, nn = 0;
 
 static float L[ANG_BUCKETS];
-static uint32_t agg_receive_count;
 static circular_buffer retina_buffer, agg_buffer;
 
 //! transmission key
 static uint32_t has_key;
 static uint32_t base_key;
+static uint32_t my_tdma_id;
 
 //! recpetion key params
 static uint32_t retina_base_key;
@@ -64,7 +65,7 @@ typedef enum callback_priorities {
 
 //! human readable definitions of each element in the transmission region
 typedef enum transmission_region_elements {
-    HAS_KEY = 0, MY_KEY = 1
+    HAS_KEY = 0, MY_KEY = 1, TDMA_ID = 2
 } transmission_region_elements;
 
 //! human readable definitions of each element in the reception region
@@ -291,7 +292,12 @@ void user_callback(uint user0, uint user1) {
 
 
     if(has_key) {
-
+        if (my_tdma_id != 0){
+           uint32_t expected_time = my_tdma_id * 300 + tc[T1_COUNT];
+           while (tc[T1_COUNT] > expected_time) {
+              return;
+           }
+        }
         //send a message out
         while (!spin1_send_mc_packet(base_key + COORDS_KEY_OFFSET, codexy(x, y), WITH_PAYLOAD)) {
             spin1_delay_us(1);
@@ -358,6 +364,7 @@ bool read_config(address_t address){
 bool read_transmission_keys(address_t address){
     has_key = address[HAS_KEY];
     base_key = address[MY_KEY];
+    my_tdma_id = address[TDMA_ID];
     return true;
 }
 
