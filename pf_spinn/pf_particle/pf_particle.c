@@ -90,7 +90,7 @@ void receive_data_payload(uint key, uint payload) {
         log_error("Could not add agg data");
     }
 
-    if(circular_buffer_size(agg_buffer) > 9) {//or 40?
+    if(circular_buffer_size(agg_buffer) >= 10) {//or 40?
         spin1_trigger_user_event(0, 0);
     }
 
@@ -367,6 +367,7 @@ void update(uint ticks, uint b) {
     }
 
     if(time == 0) {
+        log_info("my key = %d", base_key);
         sendstate();
     }
 

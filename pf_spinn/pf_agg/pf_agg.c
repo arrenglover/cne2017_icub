@@ -14,10 +14,11 @@ typedef struct data_items_t{
     uint32_t y;
     uint32_t r;
     uint32_t l;
-    uint32_t w;
     uint32_t n;
+    float w;
 }data_items_t;
 
+static data_items_t particle_average;
 static circular_buffer particle_buffer;
 static data_items_t *particle_data;
 
@@ -157,6 +158,31 @@ void decodexy(uint32_t coded, float *x, float *y) {
 
 }
 
+void normalise() {
+
+    float total = 0;
+    for(uint32_t i = 0; i < n_particles; i++) {
+        total += particle_data[i].w;
+    }
+    total = 1.0 / total;
+    for(uint32_t i = 0; i < n_particles; i++) {
+        particle_data[i].w *= total;
+    }
+
+
+}
+
+//void average()
+//{
+//    particle_average.x = 0;
+//    particle_average.y = 0;
+//    particle_average.r = 0;
+//    particle_average.l = 0;
+//    particle_average.
+//
+//
+//}
+
 //! \brief callback for user
 //! \param[in] random param1
 //! \param[in] random param2
@@ -167,36 +193,43 @@ void user_callback(uint user0, uint user1) {
     use(user0);
     use(user1);
 
-//    for(uint32_t i = 0; i < /*nparticles*/; i++) {
+//    for(uint32_t i = 0; i < n_particles; i++) {
 //        uint32_t key, payload;
 //        if(!circular_buffer_get_next(particle_buffer, &key))
 //            log_error("Could not get key from buffer");
 //        if(!circular_buffer_get_next(particle_buffer, &payload))
 //            log_error("Could not get payload from buffer");
-
-//        START_OF_KEYS
-
-//        switch(key) {
-//        case(AGGREGATION_BASE_KEY + COORDS_KEY_OFFSET):
-//            decodexy(payload, &nx, &ny);
+//
+//        uint32_t p = (key - START_OF_KEYS) / N_KEYS;
+//        uint32_t d = (key - START_OF_KEYS) % N_KEYS;
+//
+//        switch(d) {
+//        case(COORDS):
+//            float x, y;
+//            decodexy(payload, x, y);
+//            particle_data[p].x = x;
+//            particle_data[p].y = y;
 //            break;
-//        case(AGGREGATION_BASE_KEY + RADIUS_KEY_OFFSET):
-//            nr = payload;
+//        case(RADIUS):
+//            particle_data[p].r = payload;
 //            break;
-//        case(AGGREGATION_BASE_KEY + L_KEY_OFFSET):
-//            nl = payload;
+//        case(L):
+//            particle_data[p].l = payload;
 //            break;
-//        case(AGGREGATION_BASE_KEY + W_KEY_OFFSET):
-//            nw = payload;
+//        case(W):
+//            particle_data[p].w = int_to_float(payload);
 //            break;
-//        case(AGGREGATION_BASE_KEY + N_KEY_OFFSET):
-//            nn = payload;
+//        case(N):
+//            particle_data[p].n = payload;
 //            break;
 //        default:
-//            log_error("Switch on Key (%d) not working", key);
+//            log_error("incorrect key value received at aggregator");
+//
 //        }
-
+//
 //    }
+//
+//    normalise
 
 
     if(has_key) {
