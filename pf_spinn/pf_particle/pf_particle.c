@@ -247,16 +247,17 @@ void sendstate() {
        int32_t expected_time = 0;
 
        if(current_time < (my_tdma_id * 300)){
+           log_info("dodgy");
            expected_time =
                (1000 * sv->cpu_clk) - ((my_tdma_id * 300) - current_time);
        }
        else{
+           log_info("not dodgy");
            expected_time = current_time - (my_tdma_id * 300);
        }
 
        while (tc[T1_COUNT] > expected_time) {
           log_info("tv is %d", tc[T1_COUNT]);
-          return;
        }
 
         //send a message out

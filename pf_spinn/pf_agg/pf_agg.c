@@ -92,6 +92,7 @@ void receive_data_payload(uint key, uint payload) {
     }
 
     if(circular_buffer_size(particle_buffer) >= 2 * 5 * n_particles) {
+        log_info("set off user event");
         spin1_trigger_user_event(0, 0);
     }
 
@@ -374,6 +375,7 @@ void c_main() {
     spin1_callback_on(MCPL_PACKET_RECEIVED, receive_data_payload, MC_PACKET);
     spin1_callback_on(MC_PACKET_RECEIVED, receive_data_no_payload, MC_PACKET);
     spin1_callback_on(TIMER_TICK, update, TIMER);
+    spin1_callback_on(USER_EVENT, user_callback, USER);
 
     // start execution
     log_info("Starting\n");
