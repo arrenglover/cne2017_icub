@@ -255,6 +255,7 @@ void sendstate() {
        }
 
        while (tc[T1_COUNT] > expected_time) {
+          log_info("tv is %d", tc[T1_COUNT]);
           return;
        }
 

@@ -91,7 +91,7 @@ void receive_data_payload(uint key, uint payload) {
         log_error("Could not add particle payload");
     }
 
-    if(circular_buffer_size(particle_buffer) > 2 * 5 * n_particles) {
+    if(circular_buffer_size(particle_buffer) >= 2 * 5 * n_particles) {
         spin1_trigger_user_event(0, 0);
     }
 
