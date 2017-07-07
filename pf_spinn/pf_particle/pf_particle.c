@@ -167,6 +167,13 @@ void predict(float sigma) {
     y += 2.0 * sigma * rand() / RAND_MAX - sigma;
     r += 2.0 * sigma * rand() / RAND_MAX - sigma;
 
+    if(r < 10) r = 10;
+    if(r > 40) r = 40;
+    if(x < -r) x = -r;
+    if(x > 304+r) x = 304+r;
+    if(y < -r) y = -r;
+    if(y > 240+r) r = 240 + r;
+
 }
 
 void incLikelihood(float vx, float vy) {
@@ -263,7 +270,7 @@ void sendstate() {
        }
 
         //send a message out
-        //log_info("sending packets");
+        //log_info("sending packets %d", time);
         while (!spin1_send_mc_packet(
                 base_key + COORDS_X_KEY_OFFSET, float_to_int(x),
                 WITH_PAYLOAD)) {
@@ -326,7 +333,7 @@ void user_callback(uint user0, uint user1) {
             log_error("Switch on Key (%d) not working", key);
     }
 
-    if(nx < 0 || ny < 0 || nr < 0 || nw < 0 || nl < 0) {
+    if(nw < 0 || nl < 0) {
         log_error("Packet Loss from Aggregator");
         return;
     }
@@ -336,6 +343,7 @@ void user_callback(uint user0, uint user1) {
     nn = 0;
 
     predict(SIGMA_SCALER * n / ANG_BUCKETS);
+    n = 0;
 
     processInput();
     concludeLikelihood();
@@ -376,7 +384,7 @@ void update(uint ticks, uint b) {
     }
 
     if(time % 1000 == 0) {
-        log_info("Update Rate = %d / second", update_count * timer_period);
+        log_info("Update Rate = %d / second", update_count);
         update_count = 0;
     }
 

@@ -46,8 +46,10 @@ static float sumsqr = 0;
 static uint32_t *reception_base_keys = NULL;
 static uint32_t n_particles = 0;
 static data_items_t resampled_data;
+static data_items_t average_data;
 static circular_buffer particle_buffer;
 static data_items_t *particle_data;
+static uint32_t maximum_n = 0;
 
 //! key bases offsets
 typedef enum packet_identifiers{
@@ -118,12 +120,30 @@ void receive_data_no_payload(uint key, uint payload) {
 
 //! \brief records data via the record interface
 void record_data() {
-   //if (do_record){
-   //    recording_record(
-   //        RECORDING_DATA_REGION_ID,
-   //        !!!!DATA!!!,
-   //        SIZE_OF_DATA!!!!!!);
-   //}
+   if (do_record){
+
+       average_data.x = 0;
+       average_data.y = 0;
+       average_data.r = 0;
+       average_data.l = 0;
+       average_data.w = 1.0;
+       average_data.n = 0;
+
+       for(int i = 0; i < n_particles; i++) {
+            float w = particle_data[i].w;
+            average_data.x += particle_data[i].x * w;
+            average_data.y += particle_data[i].y * w;
+            average_data.r += particle_data[i].r * w;
+            average_data.l += particle_data[i].l * w;
+            average_data.n += particle_data[i].n * w;
+       }
+
+
+       recording_record(
+           RECORDING_DATA_REGION_ID,
+           &average_data,
+           sizeof(data_items_t));
+   }
 }
 
 
@@ -172,12 +192,17 @@ void decodexy(uint32_t coded, float *x, float *y) {
 
 void normalise() {
 
+    sumsqr = 0;
+    maximum_n = 0;
+
     float total = 0;
     for(uint32_t i = 0; i < n_particles; i++) {
         total += particle_data[i].w;
+        if(particle_data[i].n > maximum_n)
+            maximum_n = particle_data[i].n;
     }
     total = 1.0 / total;
-    sumsqr = 0;
+
     for(uint32_t i = 0; i < n_particles; i++) {
         particle_data[i].w *= total;
         sumsqr += particle_data[i].w * particle_data[i].w;
@@ -189,6 +214,8 @@ void normalise() {
 void send_resample_message()
 {
     if(has_key) {
+
+        //log_info("sending packet %d", time);
 
         //send a message out
         while (!spin1_send_mc_packet(
@@ -243,7 +270,7 @@ void send_position_out()
 
 void resample() {
 
-    if(sumsqr * n_particles > 2.0f) {
+    if(sumsqr * n_particles > 2.0f && maximum_n > 4) {
 
         float rn = 1.02 * (double)rand() / RAND_MAX;
         if(rn > 1.0) {
@@ -342,11 +369,11 @@ void user_callback(uint user0, uint user1) {
 
     }
 
-    //normalise();
-    //send_position_out(); //will only work for 1 aggregator
-
+    normalise();
+    send_position_out(); //will only work for 1 aggregator
+    resample();
+    //resampled_data = particle_data[partner_i];
     send_resample_message();
-
 
 }
 
@@ -381,9 +408,9 @@ void update(uint ticks, uint b) {
         recording_do_timestep_update(time);
     }
 
-//    if(time % 1000 == 0) {
-//        log_info("Data recieved: %d", circular_buffer_size(particle_buffer));
-//    }
+    if(time % 1000 == 0) {
+        log_info("Current size of input buffer: %d", circular_buffer_size(particle_buffer));
+    }
 
 }
 
