@@ -53,6 +53,7 @@ class PfAggVertex(
     KEYS_PER_SAMPLE_DATA = 5
     SDRAM_PER_TIMER_TICK_PER_RECORDING = 12
     TRANSMISSION_DATA_SIZE = 16
+    CONFIG_DATA_REGION_SIZE = 8
 
     def __init__(self, label, n_particles, constraints=None,
                  record_data=False, transmit_target_position=False):
@@ -84,7 +85,8 @@ class PfAggVertex(
     def resources_required(self, n_machine_time_steps):
         sdram_required = (
             constants.SYSTEM_BYTES_REQUIREMENT +
-            self.TRANSMISSION_DATA_SIZE + 4 + (self.n_particles * 4) + 4)
+            self.TRANSMISSION_DATA_SIZE + 4 + (self.n_particles * 4) + 4 +
+            self.CONFIG_DATA_REGION_SIZE)
 
         if self._record_data:
             sdram_required += (
@@ -183,6 +185,15 @@ class PfAggVertex(
             spec.write_value(1)
         else:
             spec.write_value(0)
+
+        # write partner base key
+        partner_edges = \
+            machine_graph.get_outgoing_edge_partition_starting_at_vertex(
+                self, app_constants.EDGE_PARTITION_RE_SAMPLE)
+        partner_vertex = list(partner_edges.edges)[0].post_vertex
+        partner_key = routing_info.get_first_key_from_pre_vertex(
+            partner_vertex, app_constants.EDGE_PARTITION_PARTICLE_STATE)
+        spec.write_value(partner_key)
         
         # writing particle keys
         spec.switch_write_focus(
@@ -215,7 +226,7 @@ class PfAggVertex(
             label="Particle Keys")
         spec.reserve_memory_region(
             region=self.DATA_REGIONS.CONFIG.value,
-            size=4,
+            size=self.CONFIG_DATA_REGION_SIZE,
             label="Config (recording or not)")
 
     def get_data(self, placement, buffer_manager):

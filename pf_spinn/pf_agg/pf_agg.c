@@ -18,10 +18,6 @@ typedef struct data_items_t{
     float w;
 }data_items_t;
 
-static data_items_t particle_average;
-static circular_buffer particle_buffer;
-static data_items_t *particle_data;
-
 //! control value, which says how many timer ticks to run for before exiting
 static uint32_t simulation_ticks = 0;
 static uint32_t infinite_run = 0;
@@ -35,14 +31,17 @@ static uint32_t has_key;
 static uint32_t base_transmission_key;
 static uint32_t has_record_key;
 static uint32_t base_record_key;
+static uint32_t partner_base_key;
 
 //! flag for recording
 static uint32_t do_record;
 
 //! data items
 static uint32_t *reception_base_keys = NULL;
-static data_items_t *stored_data = NULL;
 static uint32_t n_particles = 0;
+static data_items_t particle_average;
+static circular_buffer particle_buffer;
+static data_items_t *particle_data;
 
 //! key bases
 typedef enum packet_identifiers{
@@ -76,7 +75,7 @@ typedef enum reception_base_keys_region_items{
 
 //! human readable definitions of each element in the config region
 typedef enum config_region_items {
-    DO_RECORD
+    DO_RECORD, PARTNER_KEY
 }config_region_items;
 
 
@@ -328,7 +327,17 @@ static bool read_transmission_region(address_t address){
 static bool read_reception_region(address_t address){
     uint32_t n_keys = address[N_KEYS];
     reception_base_keys = (uint32_t*) spin1_malloc(n_keys * sizeof(uint32_t));
-    stored_data = (data_items_t*) spin1_malloc(n_keys * sizeof(data_items_t));
+
+    //! read in base keys
+    for (uint32_t entry = 0; entry < n_keys; entry++) {
+        reception_base_keys[entry] = address[START_OF_KEYS + entry];
+    }
+
+    //! create data holder for particles
+    particle_data =
+        (data_items_t*) spin1_malloc(n_keys * sizeof(data_items_t));
+
+    //! store n particles
     n_particles = n_keys;
     return true;
 }
@@ -338,6 +347,7 @@ static bool read_reception_region(address_t address){
 //! \return bool which is successful if read correctly, false otherwise
 static bool read_config_region(address_t address){
     do_record = address[DO_RECORD];
+    partner_base_key = address[PARTNER_KEY];
     return true;
 }
 
@@ -391,14 +401,9 @@ static bool initialize(uint32_t *timer_period) {
     }
     log_info("particle_buffer initialised");
 
-    particle_data = spin1_malloc(n_particles * sizeof(data_items_t));
-    if(!particle_data)
-        return false;
-    log_info("particle data array initialised");
-
     if(has_record_key)
-        log_info("Output should be [%d %d]", base_record_key, codexy(64.0f, 64.0f));
-
+        log_info("Output should be [%d %d]",
+                 base_record_key, codexy(64.0f, 64.0f));
 
     return true;
 }
