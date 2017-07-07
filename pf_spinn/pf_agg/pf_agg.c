@@ -200,6 +200,10 @@ void send_resample_message()
             spin1_delay_us(1);
         }
         while (!spin1_send_mc_packet(
+            base_transmission_key + RADIUS, float_to_int(resampled_data.r), WITH_PAYLOAD)) {
+            spin1_delay_us(1);
+        }
+        while (!spin1_send_mc_packet(
             base_transmission_key + L, float_to_int(resampled_data.l), WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
@@ -480,7 +484,7 @@ static bool initialize(uint32_t *timer_period) {
 
     // initialise my input_buffer for receiving packets
     log_info("build buffer");
-    particle_buffer = circular_buffer_initialize(2 * 6 * n_particles);
+    particle_buffer = circular_buffer_initialize(2 * PACKETS_PER_PARTICLE * n_particles);
     if (particle_buffer == 0){
         return false;
     }

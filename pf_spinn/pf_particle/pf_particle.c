@@ -15,6 +15,7 @@
 #define MIN_LIKE 10
 #define SIGMA_SCALER 4.0f
 #define TDMA_WAIT_PERIOD 300
+#define PACKETS_PER_PARTICLE 6
 
 //! control value, which says how many timer ticks to run for before exiting
 static uint32_t simulation_ticks = 0;
@@ -95,7 +96,7 @@ void receive_data_payload(uint key, uint payload) {
         log_error("Could not add agg data");
     }
 
-    if(circular_buffer_size(agg_buffer) >= 10) {//or 40?
+    if(circular_buffer_size(agg_buffer) >= PACKETS_PER_PARTICLE * 2) {//or 40?
         spin1_trigger_user_event(0, 0);
     }
 
@@ -302,7 +303,7 @@ void user_callback(uint user0, uint user1) {
     use(user0);
     use(user1);
 
-    for(uint32_t i = 0; i < 5; i++) {
+    for(uint32_t i = 0; i < PACKETS_PER_PARTICLE; i++) {
         uint32_t key, payload;
         if(!circular_buffer_get_next(agg_buffer, &key))
             log_error("Could not get key from buffer");
@@ -311,7 +312,7 @@ void user_callback(uint user0, uint user1) {
 
         if(key == aggregation_base_key + COORDS_X_KEY_OFFSET)
             nx = int_to_float(payload);
-        if(key == aggregation_base_key + COORDS_Y_KEY_OFFSET)
+        else if(key == aggregation_base_key + COORDS_Y_KEY_OFFSET)
             ny = int_to_float(payload);
         else if(key == aggregation_base_key + RADIUS_KEY_OFFSET)
             nr = int_to_float(payload);
@@ -470,7 +471,7 @@ static bool initialize(uint32_t *timer_period) {
 
     // initialise my input_buffer for receiving packets
     log_info("build buffer");
-    agg_buffer = circular_buffer_initialize(32);
+    agg_buffer = circular_buffer_initialize(PACKETS_PER_PARTICLE * 8);
     if (agg_buffer == 0){
         return false;
     }
