@@ -1,5 +1,6 @@
 
 //! imports
+#include <stdlib.h>
 #include "spin1_api.h"
 #include "common-typedefs.h"
 #include <data_specification.h>
@@ -9,14 +10,14 @@
 #include <circular_buffer.h>
 
 //! data format
-typedef struct data_items_t{
+typedef struct data_items_t {
     uint32_t x;
     uint32_t y;
     uint32_t r;
     uint32_t l;
     uint32_t n;
     float w;
-}data_items_t;
+} data_items_t;
 
 //! control value, which says how many timer ticks to run for before exiting
 static uint32_t simulation_ticks = 0;
@@ -37,9 +38,10 @@ static uint32_t partner_base_key;
 static uint32_t do_record;
 
 //! data items
+static float sumsqr = 0;
 static uint32_t *reception_base_keys = NULL;
 static uint32_t n_particles = 0;
-static data_items_t particle_average;
+static data_items_t resampled_data;
 static circular_buffer particle_buffer;
 static data_items_t *particle_data;
 
@@ -164,8 +166,10 @@ void normalise() {
         total += particle_data[i].w;
     }
     total = 1.0 / total;
+    sumsqr = 0;
     for(uint32_t i = 0; i < n_particles; i++) {
         particle_data[i].w *= total;
+        sumsqr += particle_data[i].w * particle_data[i].w;
     }
 
 
@@ -198,10 +202,16 @@ void send_resample_message()
 
 void send_position_out()
 {
+    float average_x = 0, average_y = 0;
     if(has_record_key) {
 
+        for(uint32_t i = 0; i < n_particles; i++) {
+            average_x += particle_data[i].x * particle_data[i].w;
+            average_y += particle_data[i].y * particle_data[i].w;
+        }
+
         //send a message out
-        while (!spin1_send_mc_packet(base_record_key, codexy(64.0f, 64.0f), WITH_PAYLOAD)) {
+        while (!spin1_send_mc_packet(base_record_key, codexy(average_x, average_y), WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
 
@@ -209,16 +219,44 @@ void send_position_out()
 
 }
 
-//void average()
-//{
-//    particle_average.x = 0;
-//    particle_average.y = 0;
-//    particle_average.r = 0;
-//    particle_average.l = 0;
-//    particle_average.
-//
-//
-//}
+void resample() {
+
+    if(sumsqr * n_particles > 2.0f) {
+
+        float rn = 1.02 * (double)rand() / RAND_MAX;
+        if(rn > 1.0) {
+
+            //set resampled data to random values
+            resampled_data.x = 64.0;
+            resampled_data.y = 64.0;
+            resampled_data.r = 30.0;
+            resampled_data.l = 1.0;
+            resampled_data.w = 1.0;
+            resampled_data.n = 1.0;
+
+        } else {
+
+            //set resampled according to distribution of weights
+            float accumed_sum = 0.0;
+            uint32_t j = 0;
+            for(j = 0; j < n_particles; j++) {
+                accumed_sum += particle_data[j].w;
+                if(accumed_sum > rn) break;
+            }
+            resampled_data = particle_data[j];
+
+        }
+
+
+    } else {
+
+        resampled_data.l = 0.0;
+        resampled_data.w = 0.0;
+        resampled_data.n = 0.0;
+
+
+    }
+}
 
 //! \brief callback for user
 //! \param[in] random param1
@@ -226,50 +264,65 @@ void send_position_out()
 void user_callback(uint user0, uint user1) {
 
     //log_info("Aggregator user callback");
-    circular_buffer_clear(particle_buffer);
+    //circular_buffer_clear(particle_buffer);
     use(user0);
     use(user1);
 
-//    for(uint32_t i = 0; i < n_particles; i++) {
-//        uint32_t key, payload;
-//        if(!circular_buffer_get_next(particle_buffer, &key))
-//            log_error("Could not get key from buffer");
-//        if(!circular_buffer_get_next(particle_buffer, &payload))
-//            log_error("Could not get payload from buffer");
+    float x, y;
+    uint32_t n_packets = circular_buffer_size(particle_buffer);
+    uint32_t pi = 0, particle_key;
+
+
+    for(uint32_t i = 0; i < n_packets; i++) {
+
+        uint32_t key, payload;
+        if(!circular_buffer_get_next(particle_buffer, &key))
+            log_error("Could not get key from buffer");
+        if(!circular_buffer_get_next(particle_buffer, &payload))
+            log_error("Could not get payload from buffer");
+
+
+        particle_key = key & 0xFFFFFFF8;
+        if(particle_key != reception_base_keys[pi]) {
+            for(pi = 0; pi < n_particles; i++) {
+                if(reception_base_keys[pi] == particle_key)
+                    break;
+            }
+
+            if(pi == n_particles)
+                log_error("Could not find particle index from the key");
+        }
+
+        switch(key & 0x07) {
+        case(COORDS):
+            decodexy(payload, &x, &y);
+            particle_data[pi].x = x;
+            particle_data[pi].y = y;
+            break;
+        case(RADIUS):
+            particle_data[pi].r = payload;
+            break;
+        case(L):
+            particle_data[pi].l = payload;
+            break;
+        case(W):
+            particle_data[pi].w = int_to_float(payload);
+            break;
+        case(N):
+            particle_data[pi].n = payload;
+            break;
+        default:
+            log_error("incorrect key value received at aggregator");
+
+        }
+
+    }
 //
-//        uint32_t p = (key - START_OF_KEYS) / N_KEYS;
-//        uint32_t d = (key - START_OF_KEYS) % N_KEYS;
-//
-//        switch(d) {
-//        case(COORDS):
-//            float x, y;
-//            decodexy(payload, x, y);
-//            particle_data[p].x = x;
-//            particle_data[p].y = y;
-//            break;
-//        case(RADIUS):
-//            particle_data[p].r = payload;
-//            break;
-//        case(L):
-//            particle_data[p].l = payload;
-//            break;
-//        case(W):
-//            particle_data[p].w = int_to_float(payload);
-//            break;
-//        case(N):
-//            particle_data[p].n = payload;
-//            break;
-//        default:
-//            log_error("incorrect key value received at aggregator");
-//
-//        }
-//
-//    }
-//
-//    normalise
+    normalise();
+    send_position_out(); //will only work for 1 aggregator
 
     send_resample_message();
-    send_position_out(); //will only work for 1 aggregator
+
 
 }
 
