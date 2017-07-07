@@ -51,8 +51,8 @@ static uint32_t recording_flags = 0;
 
 //! key bases
 typedef enum packet_identifiers {
-    COORDS_KEY_OFFSET = 0, RADIUS_KEY_OFFSET = 1, L_KEY_OFFSET = 2,
-    W_KEY_OFFSET = 3, N_KEY_OFFSET = 4
+    COORDS_X_KEY_OFFSET = 0, COORDS_Y_KEY_OFFSET = 1, RADIUS_KEY_OFFSET = 2,
+    L_KEY_OFFSET = 3, W_KEY_OFFSET = 4, N_KEY_OFFSET = 5
 }packet_identifiers;
 
 //! human readable definitions of each region in SDRAM
@@ -256,26 +256,38 @@ void sendstate() {
 
        int dt = current_time - tc[T1_COUNT];
        if(dt < 0) dt += max_counter;
-       while(dt < my_tdma_id * 300) {
+       while(dt < my_tdma_id * TDMA_WAIT_PERIOD) {
             dt = current_time - tc[T1_COUNT];
             if(dt < 0) dt += max_counter;
        }
 
         //send a message out
         //log_info("sending packets");
-        while (!spin1_send_mc_packet(base_key + COORDS_KEY_OFFSET, codexy(x, y), WITH_PAYLOAD)) {
+        while (!spin1_send_mc_packet(
+                base_key + COORDS_X_KEY_OFFSET, float_to_int(x),
+                WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
-        while (!spin1_send_mc_packet(base_key + RADIUS_KEY_OFFSET, float_to_int(r), WITH_PAYLOAD)) {
+        while (!spin1_send_mc_packet(
+                base_key + COORDS_Y_KEY_OFFSET, float_to_int(y),
+                WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
-        while (!spin1_send_mc_packet(base_key + L_KEY_OFFSET, float_to_int(l), WITH_PAYLOAD)) {
+        while (!spin1_send_mc_packet(
+                base_key + RADIUS_KEY_OFFSET, float_to_int(r),
+                WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
-        while (!spin1_send_mc_packet(base_key + W_KEY_OFFSET, float_to_int(w), WITH_PAYLOAD)) {
+        while (!spin1_send_mc_packet(
+                base_key + L_KEY_OFFSET, float_to_int(l), WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
-        while (!spin1_send_mc_packet(base_key + N_KEY_OFFSET, n, WITH_PAYLOAD)) {
+        while (!spin1_send_mc_packet(
+                base_key + W_KEY_OFFSET, float_to_int(w), WITH_PAYLOAD)) {
+            spin1_delay_us(1);
+        }
+        while (!spin1_send_mc_packet(
+                base_key + N_KEY_OFFSET, n, WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
     }
@@ -297,8 +309,10 @@ void user_callback(uint user0, uint user1) {
         if(!circular_buffer_get_next(agg_buffer, &payload))
             log_error("Could not get payload from buffer");
 
-        if(key == aggregation_base_key + COORDS_KEY_OFFSET)
-            decodexy(payload, &nx, &ny);
+        if(key == aggregation_base_key + COORDS_X_KEY_OFFSET)
+            nx = int_to_float(payload);
+        if(key == aggregation_base_key + COORDS_Y_KEY_OFFSET)
+            ny = int_to_float(payload);
         else if(key == aggregation_base_key + RADIUS_KEY_OFFSET)
             nr = int_to_float(payload);
         else if(key == aggregation_base_key + L_KEY_OFFSET)
@@ -366,7 +380,8 @@ void update(uint ticks, uint b) {
     }
 
     if(time == 0) {
-        log_info("my key = %d : my aggregator key = %d", base_key, aggregation_base_key);
+        log_info("my key = %d : my aggregator key = %d",
+                 base_key, aggregation_base_key);
         sendstate();
     }
 

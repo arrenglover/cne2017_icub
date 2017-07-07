@@ -8,6 +8,8 @@
 #include <debug.h>
 #include <circular_buffer.h>
 
+#define PACKETS_PER_PARTICLE 6
+
 //! data format
 typedef struct data_items_t{
     uint32_t x;
@@ -45,7 +47,8 @@ static data_items_t *particle_data;
 
 //! key bases
 typedef enum packet_identifiers{
-    COORDS = 0, RADIUS = 1, L = 2, W = 3, N = 4, N_KEYS_RECEIVED = 5
+    COORDS_X = 0, COORDS_Y = 1, RADIUS = 2, L = 3, W = 4, N = 5,
+    N_KEYS_RECEIVED = 6
 }packet_identifiers;
 
 //! human readable definitions of each region in SDRAM
@@ -91,7 +94,8 @@ void receive_data_payload(uint key, uint payload) {
         log_error("Could not add particle payload");
     }
 
-    if(circular_buffer_size(particle_buffer) >= 2 * 5 * n_particles) {
+    if(circular_buffer_size(particle_buffer) >=
+            2 * PACKETS_PER_PARTICLE * n_particles) {
         //log_info("set off user event");
         spin1_trigger_user_event(0, 0);
     }
@@ -176,19 +180,30 @@ void send_resample_message()
     if(has_key) {
 
         //send a message out
-        while (!spin1_send_mc_packet(base_transmission_key + COORDS, codexy(64, 64), WITH_PAYLOAD)) {
+        while (!spin1_send_mc_packet(
+                base_transmission_key + COORDS_X, 64, WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
-        while (!spin1_send_mc_packet(base_transmission_key + RADIUS, float_to_int(30.0), WITH_PAYLOAD)) {
+        while (!spin1_send_mc_packet(
+                base_transmission_key + COORDS_Y, 64, WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
-        while (!spin1_send_mc_packet(base_transmission_key + L, float_to_int(10.0), WITH_PAYLOAD)) {
+        while (!spin1_send_mc_packet(
+                base_transmission_key + RADIUS, float_to_int(30.0),
+                WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
-        while (!spin1_send_mc_packet(base_transmission_key + W, float_to_int(1.0), WITH_PAYLOAD)) {
+        while (!spin1_send_mc_packet(
+                base_transmission_key + L, float_to_int(10.0),
+                WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
-        while (!spin1_send_mc_packet(base_transmission_key + N, 10, WITH_PAYLOAD)) {
+        while (!spin1_send_mc_packet(
+                base_transmission_key + W, float_to_int(1.0), WITH_PAYLOAD)) {
+            spin1_delay_us(1);
+        }
+        while (!spin1_send_mc_packet(
+                base_transmission_key + N, 10, WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
     }
@@ -201,7 +216,8 @@ void send_position_out()
     if(has_record_key) {
 
         //send a message out
-        while (!spin1_send_mc_packet(base_record_key, codexy(64.0f, 64.0f), WITH_PAYLOAD)) {
+        while (!spin1_send_mc_packet(
+                base_record_key, codexy(64.0f, 64.0f), WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
 

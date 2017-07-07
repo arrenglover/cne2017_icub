@@ -42,6 +42,8 @@ class PfParticleVertex(
     RECEPTION_KEY_SIZE = 8
     CONFIG_PARAM_SIZE = 16
 
+    KEYS_REQUIRED = 6
+
     def __init__(self, x, y, r, packet_threshold, label, id, constraints=None):
         MachineVertex.__init__(self, label=label, constraints=constraints)
         
@@ -76,7 +78,7 @@ class PfParticleVertex(
         
     @overrides(AbstractProvidesNKeysForPartition.get_n_keys_for_partition)
     def get_n_keys_for_partition(self, partition, graph_mapper):
-        return 5
+        return self.KEYS_REQUIRED
 
     @overrides(MachineDataSpecableVertex.generate_machine_data_specification)
     def generate_machine_data_specification(

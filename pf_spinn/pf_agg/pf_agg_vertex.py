@@ -50,10 +50,13 @@ class PfAggVertex(
     CORE_APP_IDENTIFIER = 0xBEEF
 
     KEYS_PER_TARGET_POSITION = 1
-    KEYS_PER_SAMPLE_DATA = 5
+    KEYS_PER_SAMPLE_DATA = 6
+
     SDRAM_PER_TIMER_TICK_PER_RECORDING = 12
     TRANSMISSION_DATA_SIZE = 16
     CONFIG_DATA_REGION_SIZE = 8
+
+    RECORDED_REGION_ID = 0
 
     def __init__(self, label, n_particles, constraints=None,
                  record_data=False, transmit_target_position=False):
@@ -237,7 +240,7 @@ class PfAggVertex(
         :return: string output
         """
         data_pointer, missing_data = buffer_manager.get_data_for_vertex(
-            placement, 0)
+            placement, self.RECORDED_REGION_ID)
         if missing_data:
             raise Exception("missing data!")
         record_raw = data_pointer.read_all()
@@ -269,7 +272,7 @@ class PfAggVertex(
                 self.SDRAM_PER_TIMER_TICK_PER_RECORDING])
 
     def get_recorded_region_ids(self):
-        return [0]
+        return [self.RECORDED_REGION_ID]
 
     def get_recording_region_base_address(self, txrx, placement):
         return helpful_functions.locate_memory_region_for_placement(
