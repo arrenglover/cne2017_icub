@@ -93,7 +93,7 @@ void receive_data_payload(uint key, uint payload) {
     }
 
     if(circular_buffer_size(particle_buffer) >= 2 * 5 * n_particles) {
-        log_info("set off user event");
+        //log_info("set off user event");
         spin1_trigger_user_event(0, 0);
     }
 
@@ -172,6 +172,44 @@ void normalise() {
 
 }
 
+void send_resample_message()
+{
+    if(has_key) {
+
+        //send a message out
+        while (!spin1_send_mc_packet(base_transmission_key + COORDS, codexy(64, 64), WITH_PAYLOAD)) {
+            spin1_delay_us(1);
+        }
+        while (!spin1_send_mc_packet(base_transmission_key + RADIUS, float_to_int(30.0), WITH_PAYLOAD)) {
+            spin1_delay_us(1);
+        }
+        while (!spin1_send_mc_packet(base_transmission_key + L, float_to_int(10.0), WITH_PAYLOAD)) {
+            spin1_delay_us(1);
+        }
+        while (!spin1_send_mc_packet(base_transmission_key + W, float_to_int(1.0), WITH_PAYLOAD)) {
+            spin1_delay_us(1);
+        }
+        while (!spin1_send_mc_packet(base_transmission_key + N, 10, WITH_PAYLOAD)) {
+            spin1_delay_us(1);
+        }
+    }
+
+
+}
+
+void send_position_out()
+{
+    if(has_record_key) {
+
+        //send a message out
+        while (!spin1_send_mc_packet(base_record_key, codexy(64, 64), WITH_PAYLOAD)) {
+            spin1_delay_us(1);
+        }
+
+    }
+
+}
+
 //void average()
 //{
 //    particle_average.x = 0;
@@ -188,7 +226,7 @@ void normalise() {
 //! \param[in] random param2
 void user_callback(uint user0, uint user1) {
 
-    log_info("Aggregator user callback");
+    //log_info("Aggregator user callback");
     circular_buffer_clear(particle_buffer);
     use(user0);
     use(user1);
@@ -231,26 +269,8 @@ void user_callback(uint user0, uint user1) {
 //
 //    normalise
 
-
-    if(has_key) {
-
-        //send a message out
-        while (!spin1_send_mc_packet(base_transmission_key + COORDS, codexy(64, 64), WITH_PAYLOAD)) {
-            spin1_delay_us(1);
-        }
-        while (!spin1_send_mc_packet(base_transmission_key + RADIUS, float_to_int(30.0), WITH_PAYLOAD)) {
-            spin1_delay_us(1);
-        }
-        while (!spin1_send_mc_packet(base_transmission_key + L, float_to_int(10.0), WITH_PAYLOAD)) {
-            spin1_delay_us(1);
-        }
-        while (!spin1_send_mc_packet(base_transmission_key + W, float_to_int(1.0), WITH_PAYLOAD)) {
-            spin1_delay_us(1);
-        }
-        while (!spin1_send_mc_packet(base_transmission_key + N, 10, WITH_PAYLOAD)) {
-            spin1_delay_us(1);
-        }
-    }
+    send_resample_message();
+    send_position_out(); //will only work for 1 aggregator
 
 }
 
@@ -285,9 +305,9 @@ void update(uint ticks, uint b) {
         recording_do_timestep_update(time);
     }
 
-    if(time % 1000 == 0) {
-        log_info("Data recieved: %d", circular_buffer_size(particle_buffer));
-    }
+//    if(time % 1000 == 0) {
+//        log_info("Data recieved: %d", circular_buffer_size(particle_buffer));
+//    }
 
 }
 

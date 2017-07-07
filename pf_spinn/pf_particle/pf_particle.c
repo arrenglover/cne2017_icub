@@ -20,9 +20,11 @@
 static uint32_t simulation_ticks = 0;
 static uint32_t infinite_run = 0;
 static uint32_t time = 0;
+static uint32_t update_count = 0;
 
 //! timer period
 uint32_t timer_period;
+uint32_t max_counter;
 
 //! parameters for this c code
 static float x = 64.0f, nx = -1.0f;
@@ -244,12 +246,12 @@ void particleResample() {
 
 void sendstate() {
 
-    log_info("sending state, %d", sv->cpu_clk);
+    //log_info("sending state, %d", sv->cpu_clk);
     if(i_has_key == 1) {
        uint32_t current_time = tc[T1_COUNT];
 
        //calculate max_counter;
-       uint32_t max_counter = timer_period * sv->cpu_clk;
+       max_counter = timer_period * sv->cpu_clk;
 
 
        int dt = current_time - tc[T1_COUNT];
@@ -260,7 +262,7 @@ void sendstate() {
        }
 
         //send a message out
-        log_info("sending packets");
+        //log_info("sending packets");
         while (!spin1_send_mc_packet(base_key + COORDS_KEY_OFFSET, codexy(x, y), WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
@@ -284,7 +286,7 @@ void sendstate() {
 //! \param[in] random param2
 void user_callback(uint user0, uint user1) {
 
-    log_info("User Callback (particle processing) run");
+    //log_info("User Callback (particle processing) run");
     use(user0);
     use(user1);
 
@@ -295,26 +297,18 @@ void user_callback(uint user0, uint user1) {
         if(!circular_buffer_get_next(agg_buffer, &payload))
             log_error("Could not get payload from buffer");
 
-        switch(key) {
-        case(aggregation_base_key + COORDS_KEY_OFFSET):
+        if(key == aggregation_base_key + COORDS_KEY_OFFSET)
             decodexy(payload, &nx, &ny);
-            break;
-        case(aggregation_base_key + RADIUS_KEY_OFFSET):
+        else if(key == aggregation_base_key + RADIUS_KEY_OFFSET)
             nr = int_to_float(payload);
-            break;
-        case(aggregation_base_key + L_KEY_OFFSET):
+        else if(key == aggregation_base_key + L_KEY_OFFSET)
             nl = int_to_float(payload);
-            break;
-        case(aggregation_base_key + W_KEY_OFFSET):
+        else if(key == aggregation_base_key + W_KEY_OFFSET)
             nw = int_to_float(payload);
-            break;
-        case(aggregation_base_key + N_KEY_OFFSET):
+        else if(key == aggregation_base_key + N_KEY_OFFSET)
             nn = payload;
-            break;
-        default:
+        else
             log_error("Switch on Key (%d) not working", key);
-        }
-
     }
 
     if(nx < 0 || ny < 0 || nr < 0 || nw < 0 || nl < 0) {
@@ -334,6 +328,7 @@ void user_callback(uint user0, uint user1) {
 
     sendstate();
 
+    update_count++;
 
 
 }
@@ -363,6 +358,11 @@ void update(uint ticks, uint b) {
 
         return;
 
+    }
+
+    if(time % 1000 == 0) {
+        log_info("Update Rate = %d / second", update_count * timer_period);
+        update_count = 0;
     }
 
     if(time == 0) {
