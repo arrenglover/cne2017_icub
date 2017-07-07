@@ -177,7 +177,6 @@ class PfAggVertex(
         else:
             spec.write_value(1)
             spec.write_value(key2)
-            print "writing for recording {}" .format(key2)
 
         # writing if recording
         spec.switch_write_focus(region=self.DATA_REGIONS.CONFIG.value)
