@@ -10,6 +10,7 @@
 #include <circular_buffer.h>
 
 #define PACKETS_PER_PARTICLE 6
+#define RECORDING_DATA_REGION_ID 0
 
 //! data format
 typedef struct data_items_t {
@@ -117,7 +118,12 @@ void receive_data_no_payload(uint key, uint payload) {
 
 //! \brief records data via the record interface
 void record_data() {
-
+   if (do_record){
+       recording_record(
+           RECORDING_DATA_REGION_ID,
+           !!!!DATA!!!,
+           SIZE_OF_DATA!!!!!!);
+   }
 }
 
 

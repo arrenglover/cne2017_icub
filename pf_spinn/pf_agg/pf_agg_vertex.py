@@ -59,7 +59,7 @@ class PfAggVertex(
     RECORDED_REGION_ID = 0
 
     def __init__(self, label, n_particles, constraints=None,
-                 record_data=False, transmit_target_position=False):
+                 record_data=False):
         MachineVertex.__init__(self, label=label, constraints=constraints)
         
         AbstractProvidesNKeysForPartition.__init__(self)

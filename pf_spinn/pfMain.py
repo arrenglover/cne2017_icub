@@ -66,8 +66,7 @@ for x in range(0, n_particles):
 # create aggregator
 for x in range(0, n_particles):
     vertex = PfAggVertex(
-        record_data=(x == 0), transmit_target_position=(x == 0),
-        n_particles=n_particles,
+        record_data=(x == 0), n_particles=n_particles,
         label="Aggrigator {}".format(x))
     front_end.add_machine_vertex_instance(vertex)
     agg_list.append(vertex)
