@@ -93,7 +93,7 @@ void receive_data_payload(uint key, uint payload) {
         log_error("Could not add agg data");
     }
 
-    if(circular_buffer_size(agg_buffer) > 9) {//or 40?
+    if(circular_buffer_size(agg_buffer) >= 10) {//or 40?
         spin1_trigger_user_event(0, 0);
     }
 
@@ -296,19 +296,19 @@ void user_callback(uint user0, uint user1) {
             log_error("Could not get payload from buffer");
 
         switch(key) {
-        case(AGGREGATION_BASE_KEY + COORDS_KEY_OFFSET):
+        case(aggregation_base_key + COORDS_KEY_OFFSET):
             decodexy(payload, &nx, &ny);
             break;
-        case(AGGREGATION_BASE_KEY + RADIUS_KEY_OFFSET):
+        case(aggregation_base_key + RADIUS_KEY_OFFSET):
             nr = int_to_float(payload);
             break;
-        case(AGGREGATION_BASE_KEY + L_KEY_OFFSET):
+        case(aggregation_base_key + L_KEY_OFFSET):
             nl = int_to_float(payload);
             break;
-        case(AGGREGATION_BASE_KEY + W_KEY_OFFSET):
+        case(aggregation_base_key + W_KEY_OFFSET):
             nw = int_to_float(payload);
             break;
-        case(AGGREGATION_BASE_KEY + N_KEY_OFFSET):
+        case(aggregation_base_key + N_KEY_OFFSET):
             nn = payload;
             break;
         default:
@@ -366,6 +366,7 @@ void update(uint ticks, uint b) {
     }
 
     if(time == 0) {
+        log_info("my key = %d : my aggregator key = %d", base_key, aggregation_base_key);
         sendstate();
     }
 
