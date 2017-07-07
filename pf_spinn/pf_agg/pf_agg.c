@@ -14,12 +14,12 @@
 
 //! data format
 typedef struct data_items_t {
-    uint32_t x;
-    uint32_t y;
-    uint32_t r;
-    uint32_t l;
-    uint32_t n;
+    float x;
+    float y;
+    float r;
+    float l;
     float w;
+    uint32_t n;
 } data_items_t;
 
 //! control value, which says how many timer ticks to run for before exiting
@@ -192,29 +192,23 @@ void send_resample_message()
 
         //send a message out
         while (!spin1_send_mc_packet(
-                base_transmission_key + COORDS_X, 64, WITH_PAYLOAD)) {
+            base_transmission_key + COORDS_X, float_to_int(resampled_data.x), WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
         while (!spin1_send_mc_packet(
-                base_transmission_key + COORDS_Y, 64, WITH_PAYLOAD)) {
+            base_transmission_key + COORDS_Y, float_to_int(resampled_data.y), WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
         while (!spin1_send_mc_packet(
-                base_transmission_key + RADIUS, float_to_int(30.0),
-                WITH_PAYLOAD)) {
+            base_transmission_key + L, float_to_int(resampled_data.l), WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
         while (!spin1_send_mc_packet(
-                base_transmission_key + L, float_to_int(10.0),
-                WITH_PAYLOAD)) {
+            base_transmission_key + W, float_to_int(resampled_data.w), WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
         while (!spin1_send_mc_packet(
-                base_transmission_key + W, float_to_int(1.0), WITH_PAYLOAD)) {
-            spin1_delay_us(1);
-        }
-        while (!spin1_send_mc_packet(
-                base_transmission_key + N, 10, WITH_PAYLOAD)) {
+            base_transmission_key + N, resampled_data.n, WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
     }
@@ -254,9 +248,9 @@ void resample() {
             resampled_data.x = 10 + rand() % 284;
             resampled_data.y = 10 + rand() % 220;
             resampled_data.r = 20.0 + rand() % 10;
-            resampled_data.l = 1.0; //get
-            resampled_data.w = 1.0;
-            resampled_data.n = 1.0;
+            resampled_data.l = particle_data[partner_i].l;
+            resampled_data.w = particle_data[partner_i].w;
+            resampled_data.n = particle_data[partner_i].n;
 
         } else {
 
@@ -274,11 +268,10 @@ void resample() {
 
     } else {
 
+        //remained at same value (resample to partner)
+        //set l to 0 so the particle doesn't do the averaging step
+        resampled_data = particle_data[partner_i];
         resampled_data.l = 0.0;
-        resampled_data.w = 0.0;
-        resampled_data.n = 0.0;
-
-
     }
 }
 
@@ -322,14 +315,15 @@ void user_callback(uint user0, uint user1) {
         switch(key & 0x07) {
         case(COORDS_X):
             particle_data[pi].x = int_to_float(payload);
+            break;
         case(COORDS_Y):
             particle_data[pi].y = int_to_float(payload);
             break;
         case(RADIUS):
-            particle_data[pi].r = payload;
+            particle_data[pi].r = int_to_float(payload);
             break;
         case(L):
-            particle_data[pi].l = payload;
+            particle_data[pi].l = int_to_float(payload);
             break;
         case(W):
             particle_data[pi].w = int_to_float(payload);
