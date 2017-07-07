@@ -192,29 +192,23 @@ void send_resample_message()
 
         //send a message out
         while (!spin1_send_mc_packet(
-                base_transmission_key + COORDS_X, 64, WITH_PAYLOAD)) {
+                base_transmission_key + COORDS_X, resampled_data.x, WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
         while (!spin1_send_mc_packet(
-                base_transmission_key + COORDS_Y, 64, WITH_PAYLOAD)) {
+                base_transmission_key + COORDS_Y, resampled_data.y, WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
         while (!spin1_send_mc_packet(
-                base_transmission_key + RADIUS, float_to_int(30.0),
-                WITH_PAYLOAD)) {
+base_transmission_key + L, float_to_int(resampled_data.l), WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
         while (!spin1_send_mc_packet(
-                base_transmission_key + L, float_to_int(10.0),
-                WITH_PAYLOAD)) {
+base_transmission_key + W, float_to_int(resampled_data.w), WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
         while (!spin1_send_mc_packet(
-                base_transmission_key + W, float_to_int(1.0), WITH_PAYLOAD)) {
-            spin1_delay_us(1);
-        }
-        while (!spin1_send_mc_packet(
-                base_transmission_key + N, 10, WITH_PAYLOAD)) {
+base_transmission_key + N, resampled_data.n, WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
     }
@@ -254,9 +248,9 @@ void resample() {
             resampled_data.x = 10 + rand() % 284;
             resampled_data.y = 10 + rand() % 220;
             resampled_data.r = 20.0 + rand() % 10;
-            resampled_data.l = 1.0; //get
-            resampled_data.w = 1.0;
-            resampled_data.n = 1.0;
+            resampled_data.l = particle_data[partner_i].l;
+            resampled_data.w = particle_data[partner_i].w;
+            resampled_data.n = particle_data[partner_i].n;
 
         } else {
 
@@ -274,11 +268,10 @@ void resample() {
 
     } else {
 
+        //remained at same value (resample to partner)
+        //set l to 0 so the particle doesn't do the averaging step
+        resampled_data = particle_data[partner_i];
         resampled_data.l = 0.0;
-        resampled_data.w = 0.0;
-        resampled_data.n = 0.0;
-
-
     }
 }
 
