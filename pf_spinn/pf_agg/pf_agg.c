@@ -118,12 +118,12 @@ void receive_data_no_payload(uint key, uint payload) {
 
 //! \brief records data via the record interface
 void record_data() {
-   if (do_record){
-       recording_record(
-           RECORDING_DATA_REGION_ID,
-           !!!!DATA!!!,
-           SIZE_OF_DATA!!!!!!);
-   }
+   //if (do_record){
+   //    recording_record(
+   //        RECORDING_DATA_REGION_ID,
+   //        !!!!DATA!!!,
+   //        SIZE_OF_DATA!!!!!!);
+   //}
 }
 
 
@@ -320,10 +320,10 @@ void user_callback(uint user0, uint user1) {
         }
 
         switch(key & 0x07) {
-        case(COORDS):
-            decodexy(payload, &x, &y);
-            particle_data[pi].x = x;
-            particle_data[pi].y = y;
+        case(COORDS_X):
+            particle_data[pi].x = int_to_float(payload);
+        case(COORDS_Y):
+            particle_data[pi].y = int_to_float(payload);
             break;
         case(RADIUS):
             particle_data[pi].r = payload;

@@ -14,7 +14,7 @@
 #define INLIER_PAR 2
 #define MIN_LIKE 10
 #define SIGMA_SCALER 4.0f
-#define TDMA_WAIT_PERIOD = 300
+#define TDMA_WAIT_PERIOD 300
 
 //! control value, which says how many timer ticks to run for before exiting
 static uint32_t simulation_ticks = 0;
