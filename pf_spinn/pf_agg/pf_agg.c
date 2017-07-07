@@ -269,7 +269,7 @@ void user_callback(uint user0, uint user1) {
     use(user1);
 
     float x, y;
-    uint32_t n_packets = circular_buffer_size(particle_buffer);
+    uint32_t n_packets = circular_buffer_size(particle_buffer) / 2;
     uint32_t pi = 0, particle_key;
 
 
@@ -284,13 +284,15 @@ void user_callback(uint user0, uint user1) {
 
         particle_key = key & 0xFFFFFFF8;
         if(particle_key != reception_base_keys[pi]) {
-            for(pi = 0; pi < n_particles; i++) {
+            for(pi = 0; pi < n_particles; pi++) {
                 if(reception_base_keys[pi] == particle_key)
                     break;
             }
+        }
 
-            if(pi == n_particles)
-                log_error("Could not find particle index from the key");
+        if(pi == n_particles) {
+            log_error("Could not find particle index from the key");
+            continue;
         }
 
         switch(key & 0x07) {
@@ -317,9 +319,9 @@ void user_callback(uint user0, uint user1) {
         }
 
     }
-//
-    normalise();
-    send_position_out(); //will only work for 1 aggregator
+
+    //normalise();
+    //send_position_out(); //will only work for 1 aggregator
 
     send_resample_message();
 
