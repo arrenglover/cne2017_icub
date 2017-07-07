@@ -21,6 +21,9 @@ static uint32_t simulation_ticks = 0;
 static uint32_t infinite_run = 0;
 static uint32_t time = 0;
 
+//! timer period
+uint32_t timer_period;
+
 //! parameters for this c code
 static float x = 64.0f, nx = -1.0f;
 static float y = 64.0f, ny = -1.0f;
@@ -241,23 +244,19 @@ void particleResample() {
 
 void sendstate() {
 
-    log_info("sending state");
+    log_info("sending state, %d", sv->cpu_clk);
     if(i_has_key == 1) {
        uint32_t current_time = tc[T1_COUNT];
-       int32_t expected_time = 0;
 
-       if(current_time < (my_tdma_id * 300)){
-           log_info("dodgy");
-           expected_time =
-               (1000 * sv->cpu_clk) - ((my_tdma_id * 300) - current_time);
-       }
-       else{
-           log_info("not dodgy");
-           expected_time = current_time - (my_tdma_id * 300);
-       }
+       //calculate max_counter;
+       uint32_t max_counter = timer_period * sv->cpu_clk;
 
-       while (tc[T1_COUNT] > expected_time) {
-          log_info("tv is %d", tc[T1_COUNT]);
+
+       int dt = current_time - tc[T1_COUNT];
+       if(dt < 0) dt += max_counter;
+       while(dt < my_tdma_id * 300) {
+            dt = current_time - tc[T1_COUNT];
+            if(dt < 0) dt += max_counter;
        }
 
         //send a message out
@@ -468,9 +467,6 @@ static bool initialize(uint32_t *timer_period) {
 //! \brief main entrance method
 void c_main() {
     log_info("starting particle filter\n");
-
-    // Load DTCM data
-    uint32_t timer_period;
 
     // initialise the model
     if (!initialize(&timer_period)) {
