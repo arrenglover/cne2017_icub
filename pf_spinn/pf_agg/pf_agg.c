@@ -48,7 +48,7 @@ static data_items_t resampled_data;
 static circular_buffer particle_buffer;
 static data_items_t *particle_data;
 
-//! key bases
+//! key bases offsets
 typedef enum packet_identifiers{
     COORDS_X = 0, COORDS_Y = 1, RADIUS = 2, L = 3, W = 4, N = 5,
     N_KEYS_RECEIVED = 6
