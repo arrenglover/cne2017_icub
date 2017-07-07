@@ -166,18 +166,16 @@ class PfAggVertex(
             spec.write_value(1)
             spec.write_value(key1)
 
-        if self._transmit_target_position:
-            key2 = routing_info.get_first_key_from_pre_vertex(
-                self, app_constants.EDGE_PARTITION_TARGET_POSITION)
-            if key2 is None:
-                raise Exception("fucking idiot")
+        key2 = routing_info.get_first_key_from_pre_vertex(
+            self, app_constants.EDGE_PARTITION_TARGET_POSITION)
 
-            if key2 is None:
-                spec.write_value(0)
-                spec.write_value(0)
-            else:
-                spec.write_value(1)
-                spec.write_value(key2)
+        if key2 is None:
+            spec.write_value(0)
+            spec.write_value(0)
+        else:
+            spec.write_value(1)
+            spec.write_value(key2)
+            print "writing for recording {}" .format(key2)
 
         # writing if recording
         spec.switch_write_focus(region=self.DATA_REGIONS.CONFIG.value)

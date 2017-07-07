@@ -202,7 +202,7 @@ void send_position_out()
     if(has_record_key) {
 
         //send a message out
-        while (!spin1_send_mc_packet(base_record_key, codexy(64, 64), WITH_PAYLOAD)) {
+        while (!spin1_send_mc_packet(base_record_key, codexy(64.0f, 64.0f), WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
 
@@ -395,6 +395,9 @@ static bool initialize(uint32_t *timer_period) {
     if(!particle_data)
         return false;
     log_info("particle data array initialised");
+
+    if(has_record_key)
+        log_info("Output should be [%d %d]", base_record_key, codexy(64.0f, 64.0f));
 
 
     return true;
