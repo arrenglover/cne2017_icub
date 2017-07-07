@@ -33,6 +33,7 @@ static uint32_t base_transmission_key;
 static uint32_t has_record_key;
 static uint32_t base_record_key;
 static uint32_t partner_base_key;
+static uint32_t partner_i;
 
 //! flag for recording
 static uint32_t do_record;
@@ -227,10 +228,10 @@ void resample() {
         if(rn > 1.0) {
 
             //set resampled data to random values
-            resampled_data.x = 64.0;
-            resampled_data.y = 64.0;
-            resampled_data.r = 30.0;
-            resampled_data.l = 1.0;
+            resampled_data.x = 10 + rand() % 284;
+            resampled_data.y = 10 + rand() % 220;
+            resampled_data.r = 20.0 + rand() % 10;
+            resampled_data.l = 1.0; //get
             resampled_data.w = 1.0;
             resampled_data.n = 1.0;
 
@@ -438,6 +439,18 @@ static bool initialize(uint32_t *timer_period) {
     // get reception data
     if (!read_config_region(data_specification_get_region(CONFIG, address))){
         return false;
+    }
+
+    for(partner_i = 0; partner_i < n_particles; partner_i++) {
+        if(reception_base_keys[partner_i] == partner_base_key)
+            break;
+    }
+
+    if(partner_i == n_particles) {
+        log_error("Could not find partner_base_keys in reception_base_keys");
+        return false;
+    } else {
+        log_info("Partner_key: %d, Partner Index: %d", partner_base_key, partner_i);
     }
 
     // Get the timing details and set up the simulation interface
