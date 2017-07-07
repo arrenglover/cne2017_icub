@@ -78,7 +78,6 @@ class PfAggVertex(
             self._config, "Buffers", "receive_buffer_port")
         self.n_particles = n_particles
         self._record_data = record_data
-        self._transmit_target_position = transmit_target_position
         self._placement = None
 
     @property
