@@ -263,6 +263,9 @@ void send_position_out()
                 WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
+        static int dropper = 0;
+        if(dropper % 10000 == 0)
+            log_info("Sending output: %d %d", average_x, average_y);
 
     }
 

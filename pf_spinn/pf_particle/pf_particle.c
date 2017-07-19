@@ -23,9 +23,11 @@ static uint32_t infinite_run = 0;
 static uint32_t time = 0;
 static uint32_t update_count = 0;
 
+
 //! timer period
 uint32_t timer_period;
 uint32_t max_counter;
+uint32_t events_processed = 0;
 
 //! parameters for this c code
 static float x = 64.0f, nx = -1.0f;
@@ -37,6 +39,7 @@ static uint32_t n = 0, nn = 0;
 
 static float L[ANG_BUCKETS];
 static circular_buffer retina_buffer, agg_buffer;
+static uint32_t *qcopy;
 
 //! transmission key
 static uint32_t i_has_key;
@@ -66,7 +69,7 @@ typedef enum regions_e {
 
 //! values for the priority for each callback
 typedef enum callback_priorities {
-    MC_PACKET = -1, SDP_DMA = 0, USER = 3, TIMER = 2
+    MC_PACKET = -1, MCPL_PACKET = 0, SDP_DMA = 1, USER = 4, TIMER = 3
 } callback_priorities;
 
 //! human readable definitions of each element in the transmission region
@@ -106,11 +109,17 @@ void receive_data_payload(uint key, uint payload) {
 //! \param[in] key: the key received
 //! \param[in] payload: unused. is set to 0
 void receive_data_no_payload(uint key, uint payload) {
+   // uint32_t current_key;
     use(payload);
+   // use(key);
+
+    //events_processed++;
+
 
     if (!circular_buffer_add(retina_buffer, key)) {
-        log_error("Could not add event");
+        //log_error("Could not add 1000 events");
     }
+    //circular_buffer_get_next(retina_buffer, &current_key);
 
 }
 
@@ -208,29 +217,31 @@ void incLikelihood(float vx, float vy) {
 
 void processInput() {
 
-    uint32_t * qcopy;
     uint32_t current_key, buffersize;
     float vx, vy;
 
     uint cpsr = spin1_int_disable();
 
     buffersize = circular_buffer_size(retina_buffer);
+    //circular_buffer_clear(retina_buffer);
     //copy data
-    qcopy = spin1_malloc(buffersize * sizeof(uint32_t));
 
+//
     for(uint32_t i = 0; i < buffersize; i++) {
         if(!circular_buffer_get_next(retina_buffer, &current_key))
             log_error("Could not get key from buffer");
         qcopy[i] = current_key;
     }
-
+//
     spin1_mode_restore(cpsr);
-
 
     for(uint32_t i = 0; i < buffersize; i++) {
         decodexy(qcopy[i], &vx, &vy);
         incLikelihood(vx, vy);
     }
+
+
+    events_processed += buffersize;
 
 }
 
@@ -348,7 +359,6 @@ void user_callback(uint user0, uint user1) {
     processInput();
     concludeLikelihood();
 
-
     sendstate();
 
     update_count++;
@@ -384,8 +394,9 @@ void update(uint ticks, uint b) {
     }
 
     if(time % 1000 == 0) {
-        log_info("Update Rate = %d / second", update_count);
+        log_info("Update Rate = %d Hz | # Events = %d Hz", update_count, events_processed);
         update_count = 0;
+        events_processed = 0;
     }
 
     if(time == 0) {
@@ -471,11 +482,13 @@ static bool initialize(uint32_t *timer_period) {
 
     // initialise my input_buffer for receiving packets
     log_info("build buffer");
-    retina_buffer = circular_buffer_initialize(512);
+    retina_buffer = circular_buffer_initialize(256);
     if (retina_buffer == 0){
         return false;
     }
     log_info("retina_buffer initialised");
+    qcopy = spin1_malloc(256 * sizeof(uint32_t));
+
 
     // initialise my input_buffer for receiving packets
     log_info("build buffer");
@@ -504,7 +517,7 @@ void c_main() {
     spin1_set_timer_tick(timer_period);
 
     // register callbacks
-    spin1_callback_on(MCPL_PACKET_RECEIVED, receive_data_payload, MC_PACKET);
+    spin1_callback_on(MCPL_PACKET_RECEIVED, receive_data_payload, MCPL_PACKET);
     spin1_callback_on(MC_PACKET_RECEIVED, receive_data_no_payload, MC_PACKET);
     spin1_callback_on(TIMER_TICK, update, TIMER);
     spin1_callback_on(USER_EVENT, user_callback, USER);
