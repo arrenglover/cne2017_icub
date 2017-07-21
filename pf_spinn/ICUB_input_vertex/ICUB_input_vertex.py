@@ -28,7 +28,7 @@ class ICUBInputVertex(
     @overrides(AbstractProvidesNKeysForPartition.get_n_keys_for_partition)
     def get_n_keys_for_partition(self, partition, graph_mapper):
         if partition.identifier == constants.EDGE_PARTITION_EVENT:
-            return 72960
+            return 1048576
         raise Exception("Incorrect Partition Name at icub input vertex")
 
     @overrides(AbstractProvidesOutgoingPartitionConstraints.

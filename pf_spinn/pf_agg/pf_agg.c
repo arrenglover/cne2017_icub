@@ -129,7 +129,7 @@ void record_data() {
        average_data.w = 1.0;
        average_data.n = 0;
 
-       for(int i = 0; i < n_particles; i++) {
+       for(uint32_t i = 0; i < n_particles; i++) {
             float w = particle_data[i].w;
             average_data.x += particle_data[i].x * w;
             average_data.y += particle_data[i].y * w;
@@ -259,8 +259,7 @@ void send_position_out()
 
         //send a message out
         while (!spin1_send_mc_packet(
-                base_record_key, codexy(average_x, average_y),
-                WITH_PAYLOAD)) {
+            base_record_key + codexy(64.0f, 64.0f), 0, NO_PAYLOAD)) {
             spin1_delay_us(1);
         }
         static int dropper = 0;
@@ -319,7 +318,7 @@ void user_callback(uint user0, uint user1) {
     use(user0);
     use(user1);
 
-    float x, y;
+    //float x, y;
     uint32_t n_packets = circular_buffer_size(particle_buffer) / 2;
     uint32_t pi = 0, particle_key;
 
@@ -521,8 +520,8 @@ static bool initialize(uint32_t *timer_period) {
     log_info("particle_buffer initialised");
 
     if(has_record_key)
-        log_info("Output should be [%d %d]",
-                 base_record_key, codexy(64.0f, 64.0f));
+        log_info("Output should be [%d]",
+                 base_record_key + codexy(64.0f, 64.0f));
 
     return true;
 }
