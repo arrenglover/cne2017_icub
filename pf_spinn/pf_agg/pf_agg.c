@@ -263,8 +263,10 @@ void send_position_out()
             spin1_delay_us(1);
         }
         static int dropper = 0;
-        if(dropper % 10000 == 0)
+        if(dropper % 10000 == 0) {
+            log_info("Sending to: %08x", base_record_key);
             log_info("Sending output: %d %d", average_x, average_y);
+        }
 
     }
 
