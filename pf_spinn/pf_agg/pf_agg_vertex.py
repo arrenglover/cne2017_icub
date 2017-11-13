@@ -16,7 +16,7 @@ from spinn_front_end_common.interface.buffer_management.buffer_models\
     .abstract_receive_buffers_to_host import AbstractReceiveBuffersToHost
 from spinn_front_end_common.interface.buffer_management\
     import recording_utilities
-from spinn_front_end_common.utilities.utility_objs.executable_start_type \
+from spinn_front_end_common.utilities.utility_objs.executable_type \
     import ExecutableStartType
 
 from spinn_front_end_common.abstract_models.\

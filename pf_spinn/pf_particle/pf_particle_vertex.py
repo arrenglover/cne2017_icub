@@ -11,7 +11,7 @@ from spinn_front_end_common.abstract_models.impl.machine_data_specable_vertex \
     import MachineDataSpecableVertex
 from spinn_front_end_common.abstract_models.abstract_has_associated_binary \
     import AbstractHasAssociatedBinary
-from spinn_front_end_common.utilities.utility_objs.executable_start_type \
+from spinn_front_end_common.utilities.utility_objs.executable_type \
     import ExecutableStartType
 
 from spinn_front_end_common.abstract_models.\
