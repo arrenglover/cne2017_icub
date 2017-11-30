@@ -122,7 +122,7 @@ front_end.add_machine_edge_instance(
         label="Final Result Edge"),
     constants.EDGE_PARTITION_TARGET_POSITION)
 
-front_end.run(10000)
+front_end.run(20000)
 
 # used with test data
 placements = front_end.placements()

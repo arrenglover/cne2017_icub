@@ -259,12 +259,12 @@ void send_position_out()
 
         //send a message out
         while (!spin1_send_mc_packet(
-            base_record_key + codexy(64.0f, 64.0f), 0, NO_PAYLOAD)) {
+            base_record_key + (codexy(particle_data[partner_i].x, particle_data[partner_i].y) << 1), 0, NO_PAYLOAD)) {
             spin1_delay_us(1);
         }
         static int dropper = 0;
         if(dropper % 10000 == 0)
-            log_info("Sending output: %d %d", average_x, average_y);
+            log_info("Sending output: %f %f", particle_data[partner_i].x, particle_data[partner_i].y);
 
     }
 
@@ -274,7 +274,7 @@ void resample() {
 
     if(sumsqr * n_particles > 2.0f && maximum_n > 4) {
 
-        float rn = 1.02 * (double)rand() / RAND_MAX;
+        float rn = 1.0 * (double)rand() / RAND_MAX;
         if(rn > 1.0) {
 
             //set resampled data to random values

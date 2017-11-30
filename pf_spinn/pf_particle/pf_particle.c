@@ -176,12 +176,12 @@ void predict(float sigma) {
     y += 2.0 * sigma * rand() / RAND_MAX - sigma;
     r += 2.0 * sigma * rand() / RAND_MAX - sigma;
 
-    if(r < 10) r = 10;
-    if(r > 40) r = 40;
-    if(x < -r) x = -r;
-    if(x > 304+r) x = 304+r;
-    if(y < -r) y = -r;
-    if(y > 240+r) r = 240 + r;
+    if(r < 10)      r = 10;
+    if(r > 40)      r = 40;
+    if(x < -r)      x = -r;
+    if(x > 304+r)   x = 304+r;
+    if(y < -r)      y = -r;
+    if(y > 240+r)   y = 240 + r;
 
 }
 
@@ -298,15 +298,18 @@ void sendstate() {
             spin1_delay_us(1);
         }
         while (!spin1_send_mc_packet(
-                base_key + L_KEY_OFFSET, float_to_int(l), WITH_PAYLOAD)) {
+                base_key + L_KEY_OFFSET, float_to_int(l),
+                WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
         while (!spin1_send_mc_packet(
-                base_key + W_KEY_OFFSET, float_to_int(w), WITH_PAYLOAD)) {
+                base_key + W_KEY_OFFSET, float_to_int(w),
+                WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
         while (!spin1_send_mc_packet(
-                base_key + N_KEY_OFFSET, n, WITH_PAYLOAD)) {
+                base_key + N_KEY_OFFSET, n,
+                WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
     }
