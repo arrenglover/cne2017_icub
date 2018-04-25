@@ -1,5 +1,5 @@
 from pacman.model.constraints.key_allocator_constraints import \
-    KeyAllocatorFixedKeyAndMaskConstraint
+    FixedKeyAndMaskConstraint
 from pacman.model.graphs.machine import MachineSpiNNakerLinkVertex
 from pacman.model.routing_info import BaseKeyAndMask
 from spinn_front_end_common.abstract_models.\
@@ -34,7 +34,7 @@ class ICUBInputVertex(
     @overrides(AbstractProvidesOutgoingPartitionConstraints.
                get_outgoing_partition_constraints)
     def get_outgoing_partition_constraints(self, partition):
-        return [KeyAllocatorFixedKeyAndMaskConstraint(
+        return [FixedKeyAndMaskConstraint(
             keys_and_masks=[BaseKeyAndMask(
                 base_key=0x00100000, mask=0xFFF00000)])]
 

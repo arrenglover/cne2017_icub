@@ -16,8 +16,7 @@ from spinn_front_end_common.interface.buffer_management.buffer_models\
     .abstract_receive_buffers_to_host import AbstractReceiveBuffersToHost
 from spinn_front_end_common.interface.buffer_management\
     import recording_utilities
-from spinn_front_end_common.utilities.utility_objs.executable_type \
-    import ExecutableStartType
+from spinn_front_end_common.utilities.utility_objs import ExecutableType
 
 from spinn_front_end_common.abstract_models.\
     abstract_provides_n_keys_for_partition import \
@@ -112,7 +111,7 @@ class PfAggVertex(
 
     @overrides(AbstractHasAssociatedBinary.get_binary_start_type)
     def get_binary_start_type(self):
-        return ExecutableStartType.USES_SIMULATION_INTERFACE
+        return ExecutableType.USES_SIMULATION_INTERFACE
         
     @overrides(AbstractProvidesNKeysForPartition.get_n_keys_for_partition)
     def get_n_keys_for_partition(self, partition, graph_mapper):
