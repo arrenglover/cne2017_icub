@@ -17,6 +17,10 @@ from spinn_front_end_common.abstract_models.\
     abstract_provides_n_keys_for_partition import \
     AbstractProvidesNKeysForPartition
 
+from spinn_front_end_common.utility_models.\
+    reverse_ip_tag_multicast_source_machine_vertex import \
+    ReverseIPTagMulticastSourceMachineVertex
+
 from pf_spinn import constants as app_constants
 
 from enum import Enum
@@ -120,6 +124,8 @@ class PfParticleVertex(
         agg_vertex = None
         for edge in machine_graph.get_edges_ending_at_vertex(self):
             if isinstance(edge.pre_vertex, ICUBInputVertex):
+                input_vertex = edge.pre_vertex
+            if isinstance(edge.pre_vertex, ReverseIPTagMulticastSourceMachineVertex):
                 input_vertex = edge.pre_vertex
             if isinstance(edge.pre_vertex, PfAggVertex):
                 agg_vertex = edge.pre_vertex
