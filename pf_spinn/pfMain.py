@@ -21,6 +21,9 @@ from pf_spinn.pf_agg.pf_agg_vertex import PfAggVertex
 from pf_spinn.pf_particle.pf_particle_vertex import PfParticleVertex
 from pf_spinn.ICUB_input_vertex.ICUB_input_vertex import ICUBInputVertex
 from pf_spinn.ICUB_output_vertex.ICUB_output_vertex import ICUBOutputVertex
+from spinn_front_end_common.utility_models.\
+    reverse_ip_tag_multicast_source_machine_vertex import \
+    ReverseIPTagMulticastSourceMachineVertex
 
 # constants
 from pf_spinn import constants
@@ -37,6 +40,7 @@ front_end.setup(n_chips_required=n_chips_required,
                 model_binary_module=binaries)
 
 # state variables
+use_spinnlink = False
 machine_time_step = 1000
 time_scale_factor = 1
 n_particles = 20
@@ -73,16 +77,15 @@ for x in range(0, n_particles):
 
 # create "input"
 # running with test data use this vertex
-# input_vertex = ReverseIPTagMulticastSourceMachineVertex()
-# front_end_add_machine_vertex_instance(
-#    input_vertex,
-#    label="Input Vertex")
-
-# when running on the icub we'll need this vertex
-input_vertex = ICUBInputVertex(
-    spinnaker_link_id=spinnaker_link_used, board_address=None,
-    label="Input Vertex")
-front_end.add_machine_vertex_instance(input_vertex)
+if(use_spinnlink):
+    # when running on the icub we'll need this vertex
+    input_vertex = ICUBInputVertex(
+        spinnaker_link_id=spinnaker_link_used, board_address=None,
+        label="Input Vertex")
+    front_end.add_machine_vertex_instance(input_vertex)
+else:
+    input_vertex = ReverseIPTagMulticastSourceMachineVertex(n_keys=1048576, label="Input Vertex")
+    front_end.add_machine_vertex_instance(input_vertex)
 
 output_vertex = ICUBOutputVertex(
     spinnaker_link_id=spinnaker_link_used, board_address=None,
