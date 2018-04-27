@@ -28,6 +28,8 @@ from spinn_front_end_common.utility_models.\
 # constants
 from pf_spinn import constants
 
+from read_dataset import load_spike_train
+
 # common import
 import random
 
@@ -53,6 +55,8 @@ packets_threshold = 30
 #    processor for chip in machine.chips for processor in chip.processors
 #    if not processor.is_monitor])
 
+filename = "/home/aglover/workspace/datasets/spinnaker_tracking/1/ATIS/data.log.spiking.txt"
+spike_train = load_spike_train(filename)
 
 # VERTICES
 particle_list = list()
@@ -84,7 +88,11 @@ if(use_spinnlink):
         label="Input Vertex")
     front_end.add_machine_vertex_instance(input_vertex)
 else:
-    input_vertex = ReverseIPTagMulticastSourceMachineVertex(n_keys=1048576, label="Input Vertex")
+    input_vertex = ReverseIPTagMulticastSourceMachineVertex(
+        board_address = "192.168.240.1", receive_port=12347,
+        reserve_reverse_ip_tag=True,
+        buffer_notification_ip_address="0.0.0.0",
+        n_keys=1048576, label="Input Vertex", send_buffer_times=spike_train)
     front_end.add_machine_vertex_instance(input_vertex)
 
 output_vertex = ICUBOutputVertex(
