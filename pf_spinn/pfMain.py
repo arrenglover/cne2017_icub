@@ -40,6 +40,9 @@ logger = logging.getLogger(__name__)
 n_chips_required = 4
 front_end.setup(n_chips_required=n_chips_required,
                 model_binary_module=binaries)
+#machine = front_end.machine()
+#machine_ip = machine.ethernet_connected_chips[0].ip_address
+machine_ip = "192.168.2.201"
 
 # state variables
 use_spinnlink = False
@@ -55,7 +58,7 @@ packets_threshold = 30
 #    processor for chip in machine.chips for processor in chip.processors
 #    if not processor.is_monitor])
 
-filename = "/home/aglover/workspace/datasets/spinnaker_tracking/1/ATIS/data.log.spiking.txt"
+filename = "data.log.spiking.txt"
 spike_train = load_spike_train(filename)
 
 # VERTICES
@@ -89,10 +92,10 @@ if(use_spinnlink):
     front_end.add_machine_vertex_instance(input_vertex)
 else:
     input_vertex = ReverseIPTagMulticastSourceMachineVertex(
-        board_address = "192.168.240.1", receive_port=12347,
-        reserve_reverse_ip_tag=True,
+        board_address=machine_ip, receive_port=12347,
+        reserve_reverse_ip_tag=True, virtual_key=0,
         buffer_notification_ip_address="0.0.0.0",
-        n_keys=1048576, label="Input Vertex", send_buffer_times=spike_train)
+        n_keys=1048575, label="Input Vertex", send_buffer_times=spike_train)
     front_end.add_machine_vertex_instance(input_vertex)
 
 output_vertex = ICUBOutputVertex(

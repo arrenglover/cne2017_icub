@@ -3,7 +3,7 @@ def load_spike_train(filename):
 
     file = open(filename, "r")
 
-    spike_train = [[]] * 1048576
+    spike_train = [[]] * 1048575
 
     for line in file:
         line_split = line.split(";")
