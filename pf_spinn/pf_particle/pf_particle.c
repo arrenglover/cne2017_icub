@@ -22,6 +22,7 @@ static uint32_t simulation_ticks = 0;
 static uint32_t infinite_run = 0;
 static uint32_t time = 0;
 static uint32_t update_count = 0;
+static uint32_t received_count = 0;
 
 
 //! timer period
@@ -119,6 +120,7 @@ void receive_data_no_payload(uint key, uint payload) {
     if (!circular_buffer_add(retina_buffer, key)) {
         //log_error("Could not add 1000 events");
     }
+    received_count++;
     //circular_buffer_get_next(retina_buffer, &current_key);
 
 }
@@ -397,9 +399,10 @@ void update(uint ticks, uint b) {
     }
 
     if(time % 1000 == 0) {
-        log_info("Update Rate = %d Hz | # Events = %d Hz", update_count, events_processed);
+        log_info("Update Rate = %d Hz | # EventProcessed = %d Hz | Events Received = %d Hz", update_count, events_processed, received_count);
         update_count = 0;
         events_processed = 0;
+        received_count = 0;
     }
 
     if(time == 0) {
