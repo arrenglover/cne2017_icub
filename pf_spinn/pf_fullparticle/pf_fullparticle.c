@@ -10,6 +10,9 @@
 #include <debug.h>
 #include <circular_buffer.h>
 
+#define X_MASK(x) x&0x1FF
+#define Y_MASK(x) (x>>9)&0xFF
+
 #define ANG_BUCKETS 64
 #define INLIER_PAR 2
 #define MIN_LIKE 10
@@ -24,6 +27,16 @@ static uint32_t time = 0;
 static uint32_t update_count = 0;
 static uint32_t received_count = 0;
 
+//! data format
+typedef struct data_items_t {
+    float x;
+    float y;
+    float r;
+    float l;
+    float w;
+    uint32_t n;
+} data_items_t;
+static data_items_t *particle_data;
 
 //! timer period
 uint32_t timer_period;
@@ -41,6 +54,10 @@ static uint32_t n = 0, nn = 0;
 static float L[ANG_BUCKETS];
 static circular_buffer retina_buffer, agg_buffer;
 static uint32_t *qcopy;
+
+static float x_target;
+static float y_target;
+static float new_n;
 
 //! transmission key
 static uint32_t i_has_key;
@@ -88,48 +105,6 @@ typedef enum config_region_elements {
     X_COORD = 0, Y_COORD = 1, RADIUS = 2, PACKET_THRESHOLD = 3
 } config_region_elements;
 
-//! \brief callback for when packet has payload (agg)
-//! \param[in] key: the key received
-//! \param[in] payload: the payload received
-void receive_data_payload(uint key, uint payload) {
-
-    if (!circular_buffer_add(agg_buffer, key)) {
-        log_error("Could not add agg data");
-    }
-    if (!circular_buffer_add(agg_buffer, payload)) {
-        log_error("Could not add agg data");
-    }
-
-    if(circular_buffer_size(agg_buffer) >= PACKETS_PER_PARTICLE * 2) {//or 40?
-        spin1_trigger_user_event(0, 0);
-    }
-
-}
-
-//! \brief callback when packet with no payload is received (retina)
-//! \param[in] key: the key received
-//! \param[in] payload: unused. is set to 0
-void receive_data_no_payload(uint key, uint payload) {
-   // uint32_t current_key;
-    use(payload);
-   // use(key);
-
-    //events_processed++;
-
-
-    if (!circular_buffer_add(retina_buffer, key)) {
-        //log_error("Could not add 1000 events");
-    }
-    received_count++;
-    //circular_buffer_get_next(retina_buffer, &current_key);
-
-}
-
-//! \brief callback for when resuming
-void resume_callback() {
-    time = UINT32_MAX;
-}
-
 //! \brief converts a int to a float via bit wise conversion
 //! \param[in] y: the int to convert
 //! \param[out] the converted float
@@ -144,128 +119,126 @@ static inline int float_to_int( float data){
     return cast_union.y;
 }
 
-void concludeLikelihood() {
+////////////////////////////////////////////////////////////////////////////////
+// SEND/RECEIVE
+////////////////////////////////////////////////////////////////////////////////
 
-    l = 0;
-    for(int i = 0; i < ANG_BUCKETS; i++) {
-        l += L[i];
+
+//! \brief callback for when packet has payload (agg)
+//! \param[in] key: the key received
+//! \param[in] payload: the payload received
+void receive_data_payload(uint key, uint payload) {
+
+    //this will be the values of the other particles
+
+    if (!circular_buffer_add(particle_buffer, key)) {
+        log_error("Could not add particle key");
+    }
+    if (!circular_buffer_add(particle_buffer, payload)) {
+        log_error("Could not add particle payload");
     }
 
-    if(l < MIN_LIKE) {
-        w = MIN_LIKE * w;
-    } else {
-        w = l * w;
+    if(circular_buffer_size(particle_buffer) >=
+            2 * PACKETS_PER_PARTICLE * n_particles) {
+        //log_info("set off user event");
+        spin1_trigger_user_event(0, 0);
     }
 
 }
 
-uint32_t codexy(float x, float y)
-{
-    return ((int)x & 0x1FF) + (((int)y & 0xFF) << 9);
-}
+//! \brief callback when packet with no payload is received (retina)
+//! \param[in] key: the key received
+//! \param[in] payload: unused. is set to 0
+void receive_data_no_payload(uint key, uint payload) {
 
-void decodexy(uint32_t coded, float *x, float *y) {
+    use(payload);
 
-    *x = coded & 0x1FF;
-    *y = (coded >> 9) & 0xFF;
-
-}
-
-void predict(float sigma) {
-
-    //use a flat distribution?
-    x += 2.0 * sigma * rand() / RAND_MAX - sigma;
-    y += 2.0 * sigma * rand() / RAND_MAX - sigma;
-    r += 2.0 * sigma * rand() / RAND_MAX - sigma;
-
-    if(r < 10)      r = 10;
-    if(r > 40)      r = 40;
-    if(x < -r)      x = -r;
-    if(x > 304+r)   x = 304+r;
-    if(y < -r)      y = -r;
-    if(y > 240+r)   y = 240 + r;
-
-}
-
-void incLikelihood(float vx, float vy) {
-
-    //get the next input packet in the queue
-
-
-    //update the L vector based on the event
-    float dx = vx - x;
-    float dy = vy - y;
-
-    float d = sqrt(dx * dx + dy * dy) - r;
-    if(d < INLIER_PAR) {
-
-        int a = 0.5 + (ANG_BUCKETS-1) * (atan2(dy, dx) + M_PI) / (2.0 * M_PI);
-
-        if(d > -INLIER_PAR) {
-            //inlier event
-            if(L[a] < 1.0) {
-                L[a] = 1.0;
-                n++;
-            }
-        } else {
-            //outlier event
-            if(L[a] > 0.0) {
-                L[a] = 0;
-                n++;
-            }
-        }
+    //this will be the events
+    if (!circular_buffer_add(retina_buffer, key)) {
+        //log_error("Could not add 1000 events");
     }
+    received_count++;
+
 }
 
-void processInput() {
+//! \brief callback for user
+//! \param[in] random param1
+//! \param[in] random param2
+void user_callback(uint user0, uint user1) {
 
-    uint32_t current_key, buffersize;
-    float vx, vy;
+    //circular_buffer_clear(particle_buffer);
+    use(user0);
+    use(user1);
 
-    uint cpsr = spin1_int_disable();
+    //float x, y;
+    uint32_t n_packets = circular_buffer_size(particle_buffer) / 2;
+    uint32_t pi = 0, particle_key;
 
-    buffersize = circular_buffer_size(retina_buffer);
-    //circular_buffer_clear(retina_buffer);
-    //copy data
 
-//
-    for(uint32_t i = 0; i < buffersize; i++) {
-        if(!circular_buffer_get_next(retina_buffer, &current_key))
+    for(uint32_t i = 0; i < n_packets; i++) {
+
+        uint32_t key, payload;
+        if(!circular_buffer_get_next(particle_buffer, &key))
             log_error("Could not get key from buffer");
-        qcopy[i] = current_key;
-    }
-//
-    spin1_mode_restore(cpsr);
+        if(!circular_buffer_get_next(particle_buffer, &payload))
+            log_error("Could not get payload from buffer");
 
-    for(uint32_t i = 0; i < buffersize; i++) {
-        decodexy(qcopy[i], &vx, &vy);
-        incLikelihood(vx, vy);
-    }
+        //THIS WILL HAVE TO CHANGE!! ASK ABOUT KEY SPACE!!
+        switch(key & 0x07) {
+        case(COORDS_X):
+            particle_data[i].x = int_to_float(payload);
+            break;
+        case(COORDS_Y):
+            particle_data[i].y = int_to_float(payload);
+            break;
+        case(RADIUS):
+            particle_data[i].r = int_to_float(payload);
+            break;
+        case(L):
+            particle_data[i].l = int_to_float(payload);
+            break;
+        case(W):
+            particle_data[i].w = int_to_float(payload);
+            break;
+        case(N):
+            particle_data[i].n = payload;
+            break;
+        default:
+            log_error("incorrect key value received at aggregator");
 
-
-    events_processed += buffersize;
-
-}
-
-void particleResample() {
-
-    w = nw;
-
-    if(nl > 0) {
-        x = nx;
-        y = ny;
-        r = nr;
-        l = nl;
-
-        for(int i = 0; i < ANG_BUCKETS; i++) {
-            L[i] = l / ANG_BUCKETS;
         }
 
     }
+
+    performFullUpdate();
+
+    //sendstate to other particles
+//
+//    //if(special) sendROI to filters
+//
+//    //if(special) sendXY out
+//
+//    particleResample();
+//    nx = ny = nr = nl = nw = -1;
+//    nn = 0;
+//
+//    predict(SIGMA_SCALER * n / ANG_BUCKETS);
+//    n = 0;
+//
+//    processInput();
+//
+//    concludeLikelihood();
+//
+//    sendstate();
+//
+//    update_count++;
+
 
 }
 
 void sendstate() {
+
+    //we need to send X, Y, R, W, N
 
     //log_info("sending state, %d", sv->cpu_clk);
     if(i_has_key == 1) {
@@ -317,59 +290,229 @@ void sendstate() {
     }
 }
 
-//! \brief callback for user
-//! \param[in] random param1
-//! \param[in] random param2
-void user_callback(uint user0, uint user1) {
-
-    //log_info("User Callback (particle processing) run");
-    use(user0);
-    use(user1);
-
-    for(uint32_t i = 0; i < PACKETS_PER_PARTICLE; i++) {
-        uint32_t key, payload;
-        if(!circular_buffer_get_next(agg_buffer, &key))
-            log_error("Could not get key from buffer");
-        if(!circular_buffer_get_next(agg_buffer, &payload))
-            log_error("Could not get payload from buffer");
-
-        if(key == aggregation_base_key + COORDS_X_KEY_OFFSET)
-            nx = int_to_float(payload);
-        else if(key == aggregation_base_key + COORDS_Y_KEY_OFFSET)
-            ny = int_to_float(payload);
-        else if(key == aggregation_base_key + RADIUS_KEY_OFFSET)
-            nr = int_to_float(payload);
-        else if(key == aggregation_base_key + L_KEY_OFFSET)
-            nl = int_to_float(payload);
-        else if(key == aggregation_base_key + W_KEY_OFFSET)
-            nw = int_to_float(payload);
-        else if(key == aggregation_base_key + N_KEY_OFFSET)
-            nn = payload;
-        else
-            log_error("Switch on Key (%d) not working", key);
-    }
-
-    if(nw < 0 || nl < 0) {
-        log_error("Packet Loss from Aggregator");
-        return;
-    }
-
-    particleResample();
-    nx = ny = nr = nl = nw = -1;
-    nn = 0;
-
-    predict(SIGMA_SCALER * n / ANG_BUCKETS);
-    n = 0;
-
-    processInput();
-    concludeLikelihood();
-
-    sendstate();
-
-    update_count++;
+void send_roi() {
 
 
 }
+
+uint32_t codexy(float x, float y)
+{
+    return ((int)x & 0x1FF) + (((int)y & 0xFF) << 9);
+}
+
+
+void send_position_out()
+{
+    float average_x = 0, average_y = 0;
+    if(has_record_key) {
+
+        for(uint32_t i = 0; i < n_particles; i++) {
+            average_x += particle_data[i].x * particle_data[i].w;
+            average_y += particle_data[i].y * particle_data[i].w;
+        }
+
+        //send a message out
+        while (!spin1_send_mc_packet(
+            base_record_key + (codexy(particle_data[partner_i].x, particle_data[partner_i].y) << 1), 0, NO_PAYLOAD)) {
+            spin1_delay_us(1);
+        }
+        static int dropper = 0;
+        if(dropper % 10000 == 0)
+            log_info("Sending output: %f %f", particle_data[partner_i].x, particle_data[partner_i].y);
+
+    }
+
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ALGORITHM FUNCTIONS
+////////////////////////////////////////////////////////////////////////////////
+
+void performFullUpdate()
+{
+    //normalise all the weights, get target position
+    normalise(x_target, y_target, new_n);
+    //get average n-window
+        //clear the local buffer if too large
+    //if(new_n) > current_buffer_size - 30;
+    //  new_n - current_buffer_size
+
+
+    //performResample
+
+    //performPrediction
+
+    //processInput (copy list out, append to other, perform observation)
+
+    //conclude likelihood (e.g w = w*l)
+
+}
+
+void processInput() {
+
+    uint32_t current_key, buffersize;
+    float vx, vy;
+
+    uint cpsr = spin1_int_disable();
+
+    buffersize = circular_buffer_size(retina_buffer);
+    //circular_buffer_clear(retina_buffer);
+    //copy data
+
+//
+    for(uint32_t i = 0; i < buffersize; i++) {
+        if(!circular_buffer_get_next(retina_buffer, &current_key))
+            log_error("Could not get key from buffer");
+        qcopy[i] = current_key;
+    }
+//
+    spin1_mode_restore(cpsr);
+
+    for(uint32_t i = 0; i < buffersize; i++) {
+        decodexy(qcopy[i], &vx, &vy);
+        incLikelihood(vx, vy);
+    }
+
+
+    events_processed += buffersize;
+
+}
+
+void concludeLikelihood() {
+
+    l = 0;
+    for(int i = 0; i < ANG_BUCKETS; i++) {
+        l += L[i];
+    }
+
+    if(l < MIN_LIKE) {
+        w = MIN_LIKE * w;
+    } else {
+        w = l * w;
+    }
+
+}
+
+void normalise(float &x_target, float &y_target float &new_n) {
+
+    x_target = 0; y_target = 0; new_n = 0;
+    float total = 0;
+    for(uint32_t i = 0; i < n_particles; i++) {
+        total += particle_data[i].w;
+    }
+    total = 1.0 / total;
+
+    for(uint32_t i = 0; i < n_particles; i++) {
+        particle_data[i].w *= total;
+        x_target += particle_data[i].x * particle_data[i].w;
+        y_target += particle_data[i].y * particle_data[i].w;
+        new_n += particle_data[i].n * particle_data[i].w;
+    }
+
+
+}
+
+void predict(float sigma) {
+
+    //use a flat distribution?
+    x += 2.0 * sigma * rand() / RAND_MAX - sigma;
+    y += 2.0 * sigma * rand() / RAND_MAX - sigma;
+    r += 2.0 * sigma * rand() / RAND_MAX - sigma;
+
+    if(r < 10)      r = 10;
+    if(r > 40)      r = 40;
+    if(x < -r)      x = -r;
+    if(x > 304+r)   x = 304+r;
+    if(y < -r)      y = -r;
+    if(y > 240+r)   y = 240 + r;
+
+}
+
+void incLikelihood(float vx, float vy) {
+
+    //get the next input packet in the queue
+
+
+    //update the L vector based on the event
+    float dx = vx - x;
+    float dy = vy - y;
+
+    float d = sqrt(dx * dx + dy * dy) - r;
+    if(d < INLIER_PAR) {
+
+        int a = 0.5 + (ANG_BUCKETS-1) * (atan2(dy, dx) + M_PI) / (2.0 * M_PI);
+
+        if(d > -INLIER_PAR) {
+            //inlier event
+            if(L[a] < 1.0) {
+                L[a] = 1.0;
+                n++;
+            }
+        } else {
+            //outlier event
+            if(L[a] > 0.0) {
+                L[a] = 0;
+                n++;
+            }
+        }
+    }
+}
+
+void resample() {
+
+
+
+    float rn = 1.0 * (double)rand() / RAND_MAX;
+    if(rn > 1.0) {
+
+            //set resampled data to random values
+            resampled_data.x = 10 + rand() % 284;
+            resampled_data.y = 10 + rand() % 220;
+            resampled_data.r = 20.0 + rand() % 10;
+            resampled_data.l = particle_data[partner_i].l;
+            resampled_data.w = particle_data[partner_i].w;
+            resampled_data.n = particle_data[partner_i].n;
+
+        } else {
+
+            //set resampled according to distribution of weights
+            float accumed_sum = 0.0;
+            uint32_t j = 0;
+            for(j = 0; j < n_particles; j++) {
+                accumed_sum += particle_data[j].w;
+                if(accumed_sum > rn) break;
+            }
+            resampled_data = particle_data[j];
+
+        }
+
+
+
+}
+
+
+
+void particleResample() {
+
+    w = nw;
+
+    if(nl > 0) {
+        x = nx;
+        y = ny;
+        r = nr;
+        l = nl;
+
+        for(int i = 0; i < ANG_BUCKETS; i++) {
+            L[i] = l / ANG_BUCKETS;
+        }
+
+    }
+
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// SYSTEM INITIALISATION
+////////////////////////////////////////////////////////////////////////////////
 
 //! \brief timer tick callback
 //! \param[in] ticks the number of tiemr tick callbacks (not accurate)
@@ -380,7 +523,7 @@ void update(uint ticks, uint b) {
 
     time++;
 
-    log_info("on tick %d of %d", time, simulation_ticks);
+    log_debug("on tick %d of %d", time, simulation_ticks);
 
     // check that the run time hasn't already elapsed and thus needs to be
     // killed
@@ -412,6 +555,12 @@ void update(uint ticks, uint b) {
     }
 
 
+}
+
+
+//! \brief callback for when resuming
+void resume_callback() {
+    time = UINT32_MAX;
 }
 
 //! \brief reads the config data region data items
@@ -494,6 +643,9 @@ static bool initialize(uint32_t *timer_period) {
     }
     log_info("retina_buffer initialised");
     qcopy = spin1_malloc(256 * sizeof(uint32_t));
+
+    particle_data =
+        (data_items_t*) spin1_malloc(n_keys * sizeof(data_items_t));
 
 
     // initialise my input_buffer for receiving packets
