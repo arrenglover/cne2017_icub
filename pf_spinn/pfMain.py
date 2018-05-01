@@ -21,6 +21,7 @@ from pf_spinn.pf_agg.pf_agg_vertex import PfAggVertex
 from pf_spinn.pf_particle.pf_particle_vertex import PfParticleVertex
 from pf_spinn.ICUB_input_vertex.ICUB_input_vertex import ICUBInputVertex
 from pf_spinn.ICUB_output_vertex.ICUB_output_vertex import ICUBOutputVertex
+from pf_spinn.retina_filter.retina_filter import RetinaFilter
 from spinn_front_end_common.utility_models.\
     reverse_ip_tag_multicast_source_machine_vertex import \
     ReverseIPTagMulticastSourceMachineVertex
@@ -45,10 +46,11 @@ front_end.setup(n_chips_required=n_chips_required,
 machine_ip = "192.168.2.201"
 
 # state variables
-use_spinnlink = False
+use_spinn_link = False
 machine_time_step = 1000
 time_scale_factor = 1
 n_particles = 20
+
 spinnaker_link_used = 0
 packets_threshold = 30
 
@@ -64,6 +66,7 @@ spike_train = load_spike_train(filename)
 # VERTICES
 particle_list = list()
 agg_list = list()
+filter_list = list()
 
 # create particles
 for x in range(0, n_particles):
@@ -84,7 +87,7 @@ for x in range(0, n_particles):
 
 # create "input"
 # running with test data use this vertex
-if(use_spinnlink):
+if use_spinn_link:
     # when running on the icub we'll need this vertex
     input_vertex = ICUBInputVertex(
         spinnaker_link_id=spinnaker_link_used, board_address=None,
@@ -98,18 +101,31 @@ else:
         n_keys=1048575, label="Input Vertex", send_buffer_times=spike_train)
     front_end.add_machine_vertex_instance(input_vertex)
 
+# create retina filters and edges from retina to filters
+for x_row in range(0, constants.RETINA_X_SIZE):
+    partition_identifier = "retina_slice_row_{}".format(x_row)
+    vertex = RetinaFilter(
+        partition_identifier=partition_identifier, filter=x_row)
+    filter_list.append(vertex)
+    front_end.add_machine_vertex_instance(vertex)
+    front_end.add_machine_edge_instance(
+        MachineEdge(input_vertex, vertex,
+                    "Edge between retina and filter"),
+        partition_identifier)
+
 output_vertex = ICUBOutputVertex(
     spinnaker_link_id=spinnaker_link_used, board_address=None,
     label="Output Vertex")
 front_end.add_machine_vertex_instance(output_vertex)
 
-# EDGES
+# EDGES from filter to particles
 for x in range(0, n_particles):
-    front_end.add_machine_edge_instance(
-        MachineEdge(
-            input_vertex, particle_list[x],
-            label="Edge Input to P{}".format(x)),
-        constants.EDGE_PARTITION_EVENT)
+    for filter_vertex in filter_list:
+        front_end.add_machine_edge_instance(
+            MachineEdge(
+                filter_vertex, particle_list[x],
+                label="Edge Input to P{}".format(x)),
+            constants.EDGE_PARTITION_EVENT)
         
 for x in range(0, n_particles):
     for y in range(0, n_particles):

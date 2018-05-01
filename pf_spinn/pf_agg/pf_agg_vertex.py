@@ -46,8 +46,6 @@ class PfAggVertex(
                ('RECORDED_DATA', 3),
                ('CONFIG', 4)])
 
-    CORE_APP_IDENTIFIER = 0xBEEF
-
     KEYS_PER_TARGET_POSITION = 1048576
     KEYS_PER_SAMPLE_DATA = 6
 
