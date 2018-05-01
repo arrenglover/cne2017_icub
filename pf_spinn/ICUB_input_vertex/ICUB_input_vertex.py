@@ -36,5 +36,6 @@ class ICUBInputVertex(
     def get_outgoing_partition_constraints(self, partition):
         return [FixedKeyAndMaskConstraint(
             keys_and_masks=[BaseKeyAndMask(
-                base_key=0x00100000, mask=0xFFF00000)])]
+                base_key=constants.RETINA_BASE_KEY,
+                mask=constants.RETINA_MASK)])]
 

@@ -1,8 +1,11 @@
 from enum import Enum
 
+from pacman.model.constraints.key_allocator_constraints import \
+    FixedKeyAndMaskConstraint
 from pacman.model.graphs.machine import MachineVertex
 from pacman.model.resources import ResourceContainer, \
     CPUCyclesPerTickResource, DTCMResource, SDRAMResource
+from pacman.model.routing_info import BaseKeyAndMask
 from spinn_front_end_common.abstract_models import \
     AbstractHasAssociatedBinary, \
     AbstractProvidesOutgoingPartitionConstraints, \
@@ -43,10 +46,20 @@ class RetinaFilter(
         self._row_id = row_id
 
     def get_outgoing_partition_constraints(self, partition):
-        pass
+        return [FixedKeyAndMaskConstraint(
+            keys_and_masks=[BaseKeyAndMask(
+                base_key=app_constants.FILTER_BASE_KEY,
+                mask=app_constants.FILTER_BASE_MASK)])]
 
     def get_incoming_partition_constraints(self, partition):
-        pass
+        if partition == self._partition_identifier:
+            base_key = \
+                app_constants.RETINA_BASE_KEY | \
+                (1 << app_constants.RETINA_Y_BIT_SHIFT)
+            return [FixedKeyAndMaskConstraint(
+                keys_and_masks=[BaseKeyAndMask(
+                    base_key=base_key,
+                    mask=app_constants.FILTER_BASE_MASK)])]
 
     @property
     def resources_required(self):

@@ -64,11 +64,18 @@ agg_list = list()
 filter_list = list()
 
 # create particles
+main_particle = True
+the_main_particle = None
 for x in range(0, n_particles):
     vertex = PfParticleVertex(
         x=random.randint(0, 304), y=random.randint(0, 240),
         r=random.randint(0, 30), packet_threshold=packets_threshold,
-        label="Particle {}".format(x), id=x)
+        label="Particle {}".format(x), id=x, main_particle=main_particle)
+
+    if main_particle:
+        the_main_particle = vertex
+        main_particle = False
+
     front_end.add_machine_vertex_instance(vertex)
     particle_list.append(vertex)
 
@@ -91,23 +98,30 @@ if use_spinn_link:
 else:
     input_vertex = ReverseIPTagMulticastSourceMachineVertex(
         board_address=machine_ip, receive_port=12347,
-        reserve_reverse_ip_tag=True, virtual_key=0,
+        reserve_reverse_ip_tag=True, virtual_key=constants.RETINA_BASE_KEY,
         buffer_notification_ip_address="0.0.0.0",
-        n_keys=1048575, label="Input Vertex", send_buffer_times=spike_train)
+        n_keys=1048575,
+        label="Input Vertex", send_buffer_times=spike_train)
     front_end.add_machine_vertex_instance(input_vertex)
 
 # create retina filters and edges from retina to filters
-for x_row in range(0, constants.RETINA_X_SIZE):
-    partition_identifier = "retina_slice_row_{}".format(x_row)
+for y_row in range(0, constants.RETINA_Y_SIZE):
+    partition_identifier = "retina_slice_row_{}".format(y_row)
     vertex = RetinaFilter(
-        partition_identifier=partition_identifier, filter=x_row,
-        row_id=x_row, atoms_in_row=constants.RETINA_Y_SIZE)
+        partition_identifier=partition_identifier, filter=y_row,
+        row_id=y_row, atoms_in_row=constants.RETINA_Y_SIZE)
     filter_list.append(vertex)
     front_end.add_machine_vertex_instance(vertex)
     front_end.add_machine_edge_instance(
         MachineEdge(input_vertex, vertex,
                     "Edge between retina and filter"),
         partition_identifier)
+
+# create edge from main particle to filters
+for filter_vertex in filter_list:
+    front_end.add_machine_edge_instance(
+        MachineEdge(the_main_particle, filter_vertex),
+        constants.EDGE_PARTITION_PARTICLE_TO_FILTER)
 
 output_vertex = ICUBOutputVertex(
     spinnaker_link_id=spinnaker_link_used, board_address=None,

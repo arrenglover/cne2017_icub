@@ -42,11 +42,12 @@ class PfParticleVertex(
 
     TRANSMISSION_DATA_SIZE = 16
     RECEPTION_KEY_SIZE = 8
-    CONFIG_PARAM_SIZE = 16
+    CONFIG_PARAM_SIZE = 24
 
     KEYS_REQUIRED = 6
 
-    def __init__(self, x, y, r, packet_threshold, label, id, constraints=None):
+    def __init__(self, x, y, r, packet_threshold, label, id, main_particle,
+                 constraints=None):
         MachineVertex.__init__(self, label=label, constraints=constraints)
         
         AbstractProvidesNKeysForPartition.__init__(self)
@@ -57,6 +58,7 @@ class PfParticleVertex(
         self._packet_threshold = packet_threshold
         self._placement = None
         self._id = id
+        self._main = main_particle
 
     @property
     @overrides(MachineVertex.resources_required)
@@ -124,7 +126,8 @@ class PfParticleVertex(
         for edge in machine_graph.get_edges_ending_at_vertex(self):
             if isinstance(edge.pre_vertex, ICUBInputVertex):
                 input_vertex = edge.pre_vertex
-            if isinstance(edge.pre_vertex, ReverseIPTagMulticastSourceMachineVertex):
+            if isinstance(edge.pre_vertex,
+                          ReverseIPTagMulticastSourceMachineVertex):
                 input_vertex = edge.pre_vertex
             if isinstance(edge.pre_vertex, PfAggVertex):
                 agg_vertex = edge.pre_vertex
@@ -150,6 +153,19 @@ class PfParticleVertex(
         spec.write_value(self._y)
         spec.write_value(self._r)
         spec.write_value(self._packet_threshold)
+        if self._main:
+            spec.write_value(0)
+        else:
+            spec.write_value(1)
+
+        # if transmitting to filters, store key
+        if self._main:
+            routing_key = routing_info.get_first_key_from_pre_vertex(
+                self, app_constants.EDGE_PARTITION_PARTICLE_TO_FILTER)
+            if routing_key is None:
+                raise Exception("The particle is not sending to the filter")
+            else:
+                spec.write_value(routing_key)
 
         # End-of-Spec:
         spec.end_specification()

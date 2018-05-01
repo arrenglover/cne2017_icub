@@ -82,7 +82,7 @@ typedef enum reception_region_elements {
 
 //! human readable definitions of each element in the config region
 typedef enum config_region_elements {
-    X_COORD = 0, Y_COORD = 1, RADIUS = 2, PACKET_THRESHOLD = 3
+    X_COORD = 0, Y_COORD = 1, RADIUS = 2, PACKET_THRESHOLD = 3, MAIN = 4
 } config_region_elements;
 
 //! \brief callback for when packet has payload (agg)
