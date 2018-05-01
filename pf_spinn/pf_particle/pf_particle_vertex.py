@@ -133,11 +133,8 @@ class PfParticleVertex(
                 agg_vertex = edge.pre_vertex
 
         # retina key
-        routing_key = routing_info.get_first_key_from_pre_vertex(
-            input_vertex, app_constants.EDGE_PARTITION_EVENT)
-        if routing_key is None:
-            raise Exception("The particle is not receiving from the retina")
-        spec.write_value(routing_key)
+        # ARREN!!!!! WHAT THE FUDGE IS THIS FOR!?????? YOUR C CODE DONT BLOODY USE IT!
+        spec.write_value(0)
 
         # agg key
         routing_key = routing_info.get_first_key_from_pre_vertex(

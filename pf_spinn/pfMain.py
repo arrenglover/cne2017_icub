@@ -38,7 +38,7 @@ front_end.setup(n_chips_required=n_chips_required,
                 model_binary_module=binaries)
 #machine = front_end.machine()
 #machine_ip = machine.ethernet_connected_chips[0].ip_address
-machine_ip = "192.168.2.201"
+machine_ip = "192.168.2.204"
 
 # state variables
 use_spinn_link = False
@@ -97,8 +97,7 @@ if use_spinn_link:
     front_end.add_machine_vertex_instance(input_vertex)
 else:
     input_vertex = ReverseIPTagMulticastSourceMachineVertex(
-        board_address=machine_ip, receive_port=12347,
-        reserve_reverse_ip_tag=True, virtual_key=constants.RETINA_BASE_KEY,
+        virtual_key=constants.RETINA_BASE_KEY,
         buffer_notification_ip_address="0.0.0.0",
         n_keys=1048575,
         label="Input Vertex", send_buffer_times=spike_train)

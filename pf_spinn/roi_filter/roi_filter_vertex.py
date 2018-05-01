@@ -46,9 +46,11 @@ class RetinaFilter(
         self._row_id = row_id
 
     def get_outgoing_partition_constraints(self, partition):
+        base_key = app_constants.FILTER_BASE_KEY | (
+            self._row_id << app_constants.RETINA_Y_BIT_SHIFT)
         return [FixedKeyAndMaskConstraint(
             keys_and_masks=[BaseKeyAndMask(
-                base_key=app_constants.FILTER_BASE_KEY,
+                base_key=base_key,
                 mask=app_constants.FILTER_BASE_MASK)])]
 
     def get_incoming_partition_constraints(self, partition):
@@ -65,7 +67,7 @@ class RetinaFilter(
     def resources_required(self):
         sdram_required = (
             constants.SYSTEM_BYTES_REQUIREMENT +
-            self.TRANSMISSION_DATA_SIZE + self.RECEPTION_KEY_SIZE +
+            self.TRANSMISSION_DATA_SIZE +
             self.CONFIG_REGION_SIZE)
         resources = ResourceContainer(
             cpu_cycles=CPUCyclesPerTickResource(45),
@@ -96,7 +98,7 @@ class RetinaFilter(
         else:
             spec.write_value(1)
             spec.write_value(out_going_routing_key)
-            spec.write_value(self._id)
+            spec.write_value(self._row_id)
 
     def _reserve_memory_regions(self, spec, system_size):
         spec.reserve_memory_region(
@@ -112,7 +114,7 @@ class RetinaFilter(
             label="config")
 
     def get_binary_file_name(self):
-        return "retina_filter.aplx"
+        return "roi_filter.aplx"
 
     def get_binary_start_type(self):
         return ExecutableType.USES_SIMULATION_INTERFACE
