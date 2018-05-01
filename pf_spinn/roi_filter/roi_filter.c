@@ -71,7 +71,7 @@ typedef enum reception_region_elements {
 
 //! human readable definitions of each element in the config region
 typedef enum config_region_elements {
-    X_COORD = 0, Y_COORD = 1, RADIUS = 2, PACKET_THRESHOLD = 3
+    X_ROW = 0, Y_COLUMNS = 1
 } config_region_elements;
 
 //! \brief callback for when packet has payload (agg)
@@ -140,10 +140,6 @@ void update(uint ticks, uint b) {
     if ((infinite_run != TRUE) && (time >= simulation_ticks)) {
         log_info("Simulation complete.\n");
 
-        if (recording_flags > 0) {
-            log_info("updating recording regions");
-        }
-
         // falls into the pause resume mode of operating
         simulation_handle_pause_resume(resume_callback);
 
@@ -158,23 +154,6 @@ void update(uint ticks, uint b) {
         received_count = 0;
     }
 
-    if(time == 0) {
-        log_info("my key = %d : my aggregator key = %d",
-                 base_key, aggregation_base_key);
-    }
-
-
-}
-
-//! \brief reads the config data region data items
-//! \param[in] address: dsg address in sdram memory space
-//! \return bool which is successful if read correctly, false otherwise
-bool read_config(address_t address){
-    x = address[X_COORD];
-    y = address[Y_COORD];
-    r = address[RADIUS];
-    n = address[PACKET_THRESHOLD];
-    return true;
 }
 
 //! \brief reads the transmission keys data region data items
@@ -187,13 +166,12 @@ bool read_transmission_keys(address_t address){
     return true;
 }
 
-
-//! \brief reads the reception keys keys data region data items
+//! \brief reads the column data region data items
 //! \param[in] address: dsg address in sdram memory space
 //! \return bool which is successful if read correctly, false otherwise
-bool read_reception_keys(address_t address){
-    retina_base_key = address[RETINA_BASE_KEY];
-    aggregation_base_key = address[AGGREGATION_BASE_KEY];
+bool read_config(address_t address){
+    row_number = address[X_ROW];
+    number_of_cols = address[Y_COLUMNS];
     return true;
 }
 
@@ -221,20 +199,15 @@ static bool initialize(uint32_t *timer_period) {
         return false;
     }
 
-    // get config data
-    if (!read_config(data_specification_get_region(CONFIG_REGION, address))){
-        return false;
-    }
-
-    // get config data
-    if (!read_reception_keys(data_specification_get_region(
-            RECEPTION_BASE_KEYS_REGION, address))){
-        return false;
-    }
-
-    // get config data
+    // get key data
     if (!read_transmission_keys(data_specification_get_region(
             TRANSMISSION_DATA_REGION, address))){
+        return false;
+    }
+
+
+    // get config data
+    if (!read_config(data_specification_get_region(CONFIG_REGION, address))){
         return false;
     }
 

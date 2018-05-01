@@ -8,31 +8,26 @@ We then fetch the written data and print it on the python console.
 """
 
 import logging
-
-# import for binary location
-from pf_spinn import binaries
+# common import
+import random
 
 # import front end
 import spinnaker_graph_front_end as front_end
-
 # import graph components
 from pacman.model.graphs.machine import MachineEdge
-from pf_spinn.pf_agg.pf_agg_vertex import PfAggVertex
-from pf_spinn.pf_particle.pf_particle_vertex import PfParticleVertex
-from pf_spinn.ICUB_input_vertex.ICUB_input_vertex import ICUBInputVertex
-from pf_spinn.ICUB_output_vertex.ICUB_output_vertex import ICUBOutputVertex
-from pf_spinn.retina_filter.retina_filter import RetinaFilter
-from spinn_front_end_common.utility_models.\
-    reverse_ip_tag_multicast_source_machine_vertex import \
-    ReverseIPTagMulticastSourceMachineVertex
-
+# import for binary location
+from pf_spinn import binaries
 # constants
 from pf_spinn import constants
-
+from pf_spinn.ICUB_input_vertex.ICUB_input_vertex import ICUBInputVertex
+from pf_spinn.ICUB_output_vertex.ICUB_output_vertex import ICUBOutputVertex
+from pf_spinn.pf_agg.pf_agg_vertex import PfAggVertex
+from pf_spinn.pf_particle.pf_particle_vertex import PfParticleVertex
+from pf_spinn.roi_filter.roi_filter_vertex import RetinaFilter
 from read_dataset import load_spike_train
-
-# common import
-import random
+from spinn_front_end_common.utility_models. \
+    reverse_ip_tag_multicast_source_machine_vertex import \
+    ReverseIPTagMulticastSourceMachineVertex
 
 # logger!
 logger = logging.getLogger(__name__)
@@ -105,7 +100,8 @@ else:
 for x_row in range(0, constants.RETINA_X_SIZE):
     partition_identifier = "retina_slice_row_{}".format(x_row)
     vertex = RetinaFilter(
-        partition_identifier=partition_identifier, filter=x_row)
+        partition_identifier=partition_identifier, filter=x_row,
+        row_id=x_row, atoms_in_row=constants.RETINA_Y_SIZE)
     filter_list.append(vertex)
     front_end.add_machine_vertex_instance(vertex)
     front_end.add_machine_edge_instance(

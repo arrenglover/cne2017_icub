@@ -51,9 +51,6 @@ static uint32_t my_tdma_id;
 static uint32_t retina_base_key;
 static uint32_t aggregation_base_key;
 
-//! The recording flags
-static uint32_t recording_flags = 0;
-
 //! key bases
 typedef enum packet_identifiers {
     COORDS_X_KEY_OFFSET = 0, COORDS_Y_KEY_OFFSET = 1, RADIUS_KEY_OFFSET = 2,
@@ -386,10 +383,6 @@ void update(uint ticks, uint b) {
     // killed
     if ((infinite_run != TRUE) && (time >= simulation_ticks)) {
         log_info("Simulation complete.\n");
-
-        if (recording_flags > 0) {
-            log_info("updating recording regions");
-        }
 
         // falls into the pause resume mode of operating
         simulation_handle_pause_resume(resume_callback);
