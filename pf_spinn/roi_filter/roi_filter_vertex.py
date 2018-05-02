@@ -58,7 +58,7 @@ class RetinaFilter(
         if partition.identifier == self._partition_identifier:
             base_key = \
                 app_constants.RETINA_BASE_KEY | \
-                (1 << app_constants.RETINA_Y_BIT_SHIFT)
+                (self._row_id << app_constants.RETINA_Y_BIT_SHIFT)
             return [FixedKeyAndMaskConstraint(
                 keys_and_masks=[BaseKeyAndMask(
                     base_key=base_key,
