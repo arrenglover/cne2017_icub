@@ -24,7 +24,7 @@ class RetinaFilter(
         AbstractProvidesIncomingPartitionConstraints):
 
     CORE_APP_IDENTIFIER = 0xBEEF
-    TRANSMISSION_DATA_SIZE = 16
+    TRANSMISSION_DATA_SIZE = 8
     CONFIG_REGION_SIZE = 8
 
     DATA_REGIONS = Enum(
@@ -94,11 +94,9 @@ class RetinaFilter(
         if out_going_routing_key is None:
             spec.write_value(0)
             spec.write_value(0)
-            spec.write_value(0)
         else:
             spec.write_value(1)
             spec.write_value(out_going_routing_key)
-            spec.write_value(self._row_id)
 
     def _reserve_memory_regions(self, spec, system_size):
         spec.reserve_memory_region(

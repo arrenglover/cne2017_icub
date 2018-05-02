@@ -1,5 +1,6 @@
 
 //! imports
+#include <string.h>
 #include <stdlib.h>
 #include <math.h>
 #include "spin1_api.h"
@@ -12,20 +13,16 @@
 
 #define X_MASK(x) x&0x1FF
 #define Y_MASK(x) (x>>9)&0xFF
-#define REMOVE_FLAG(x) x&0xFFEFFFFF
 
 //! control value, which says how many timer ticks to run for before exiting
 static uint32_t simulation_ticks = 0;
 static uint32_t infinite_run = 0;
 static uint32_t time = 0;
-static uint32_t update_count = 0;
 static uint32_t received_count = 0;
-
+static uint32_t events_processed = 0;
 
 //! timer period
 uint32_t timer_period;
-uint32_t max_counter;
-uint32_t events_processed = 0;
 
 //! parameters for this c code
 static uint32_t row_number;
@@ -35,44 +32,46 @@ static unsigned char *LUT;
 //! transmission key
 static uint32_t i_has_key;
 static uint32_t base_key;
-static uint32_t my_tdma_id;
-
-//! recpetion key params
-static uint32_t retina_base_key;
-static uint32_t aggregation_base_key;
-
-//! The recording flags
-static uint32_t recording_flags = 0;
-
-//! key bases
 
 //! human readable definitions of each region in SDRAM
 typedef enum regions_e {
     SYSTEM_REGION,
     TRANSMISSION_DATA_REGION,
-    RECEPTION_BASE_KEYS_REGION,
     CONFIG_REGION
 } regions_e;
 
 //! values for the priority for each callback
 typedef enum callback_priorities {
-    MC_PACKET = -1, MCPL_PACKET = 0, SDP_DMA = 1, USER = 4, TIMER = 3
+    MC_PACKET = -1, MCPL_PACKET = 0, SDP_DMA = 1, TIMER = 3
 } callback_priorities;
 
 //! human readable definitions of each element in the transmission region
 typedef enum transmission_region_elements {
-    HAS_KEY = 0, MY_KEY = 1, TDMA_ID = 2
+    HAS_KEY = 0, MY_KEY = 1
 } transmission_region_elements;
-
-//! human readable definitions of each element in the reception region
-typedef enum reception_region_elements {
-    RETINA_BASE_KEY = 0, AGGREGATION_BASE_KEY = 1
-} reception_region_elements;
 
 //! human readable definitions of each element in the config region
 typedef enum config_region_elements {
-    X_ROW = 0, Y_COLUMNS = 1
+    ROW_NUMBER = 0, NUMB_COLS = 1
 } config_region_elements;
+
+
+void update_LUT(int x, int y, int r) {
+
+    memset(LUT, 0, sizeof(unsigned char) * number_of_cols);
+
+    if((int)row_number > y - r && (int)row_number < y + r) {
+        int x_start = x-r;
+        if(x_start < 0)
+            x_start = 0;
+        int x_end = x + r;
+        if(x_end > (int)(number_of_cols-1))
+            x_end = (int)(number_of_cols-1);
+        for(int i = x_start; i < x_end; i++)
+            LUT[i] = 1;
+    }
+
+}
 
 //! \brief callback for when packet has payload (agg)
 //! \param[in] key: the key received
@@ -80,25 +79,10 @@ typedef enum config_region_elements {
 void receive_data_payload(uint key, uint payload)
 {
     //here we receive the region of interest and need to set the values
-
-    //our LUT is all 0s if the row doesn't fall in the ROI
-    int y = Y_MASK(key);
-    int r = payload;
-    int x = X_MASK(key);
-    if(row_number < y + r && row_number > y - r) {
-        int x_start = std::max(x - r, 0);
-        int y_start = std::min(x + r, number_of_cols-1);
-        int i = 0;
-        while(i < x_start)
-            LUT[i++] = 0;
-        while(i < x_end)
-            LUT[i++] = 1;
-        while(i < number_of_cols-1)
-            LUT[i++] = 0;
-    }
-
+    update_LUT(X_MASK(key), Y_MASK(key), payload);
 
 }
+
 
 //! \brief callback when packet with no payload is received (retina)
 //! \param[in] key: the key received
@@ -113,7 +97,7 @@ void receive_data_no_payload(uint key, uint payload) {
 
     events_processed++;
     //send on the data (masking out the flag bit
-    while (!spin1_send_mc_packet(REMOVE_FLAG(x), 0, NO_PAYLOAD)) {
+    while (!spin1_send_mc_packet(key | base_key, 0, NO_PAYLOAD)) {
             spin1_delay_us(1);
     }
 
@@ -133,7 +117,7 @@ void update(uint ticks, uint b) {
 
     time++;
 
-    log_debug("on tick %d of %d", time, simulation_ticks);
+    //log_debug("on tick %d of %d", time, simulation_ticks);
 
     // check that the run time hasn't already elapsed and thus needs to be
     // killed
@@ -162,7 +146,6 @@ void update(uint ticks, uint b) {
 bool read_transmission_keys(address_t address){
     i_has_key = address[HAS_KEY];
     base_key = address[MY_KEY];
-    my_tdma_id = address[TDMA_ID];
     return true;
 }
 
@@ -170,8 +153,8 @@ bool read_transmission_keys(address_t address){
 //! \param[in] address: dsg address in sdram memory space
 //! \return bool which is successful if read correctly, false otherwise
 bool read_config(address_t address){
-    row_number = address[X_ROW];
-    number_of_cols = address[Y_COLUMNS];
+    row_number = address[ROW_NUMBER];
+    number_of_cols = address[NUMB_COLS];
     return true;
 }
 
@@ -218,6 +201,7 @@ static bool initialize(uint32_t *timer_period) {
         log_info("Could not allocate LUT");
         return false;
     }
+    update_LUT(152, 120, 30);
 
     return true;
 }
