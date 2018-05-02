@@ -98,6 +98,10 @@ class RetinaFilter(
             spec.write_value(1)
             spec.write_value(out_going_routing_key)
 
+        spec.switch_write_focus(self.DATA_REGIONS.CONFIG.value)
+        spec.write_value(self._row_id)
+        spec.write_value(app_constants.RETINA_X_SIZE)
+
     def _reserve_memory_regions(self, spec, system_size):
         spec.reserve_memory_region(
             region=self.DATA_REGIONS.SYSTEM.value, size=system_size,

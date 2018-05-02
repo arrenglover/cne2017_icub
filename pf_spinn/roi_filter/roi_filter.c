@@ -27,7 +27,7 @@ uint32_t timer_period;
 //! parameters for this c code
 static uint32_t row_number;
 static uint32_t number_of_cols;
-static unsigned char *LUT;
+unsigned char *LUT;
 
 //! transmission key
 static uint32_t i_has_key;
@@ -196,6 +196,7 @@ static bool initialize(uint32_t *timer_period) {
 
     // initialise my input_buffer for receiving packets
     log_info("build buffer");
+    log_info("number of columns: %d", number_of_cols);
     LUT = spin1_malloc(number_of_cols * sizeof(unsigned char));
     if (LUT == 0){
         log_info("Could not allocate LUT");
