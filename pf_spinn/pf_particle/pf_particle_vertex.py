@@ -1,9 +1,14 @@
+from pacman.model.constraints.key_allocator_constraints import \
+    FixedKeyAndMaskConstraint
 from pacman.model.decorators.overrides import overrides
 from pacman.model.graphs.machine import MachineVertex
 from pacman.model.resources import CPUCyclesPerTickResource, DTCMResource
 from pacman.model.resources import ResourceContainer, SDRAMResource
+from pacman.model.routing_info import BaseKeyAndMask
 from pf_spinn.ICUB_input_vertex.ICUB_input_vertex import ICUBInputVertex
 from pf_spinn.pf_agg.pf_agg_vertex import PfAggVertex
+from spinn_front_end_common.abstract_models import \
+    AbstractProvidesOutgoingPartitionConstraints
 
 from spinn_front_end_common.utilities import constants
 from spinn_front_end_common.interface.simulation import simulation_utilities
@@ -31,7 +36,8 @@ logger = logging.getLogger(__name__)
 
 class PfParticleVertex(
         MachineVertex, MachineDataSpecableVertex, AbstractHasAssociatedBinary,
-        AbstractProvidesNKeysForPartition):
+        AbstractProvidesNKeysForPartition,
+        AbstractProvidesOutgoingPartitionConstraints):
 
     DATA_REGIONS = Enum(
         value="DATA_REGIONS",
@@ -83,6 +89,15 @@ class PfParticleVertex(
     @overrides(AbstractProvidesNKeysForPartition.get_n_keys_for_partition)
     def get_n_keys_for_partition(self, partition, graph_mapper):
         return self.KEYS_REQUIRED
+
+    @overrides(AbstractProvidesOutgoingPartitionConstraints.
+               get_outgoing_partition_constraints)
+    def get_outgoing_partition_constraints(self, partition):
+        if partition == app_constants.EDGE_PARTITION_PARTICLE_TO_FILTER:
+            return [FixedKeyAndMaskConstraint(
+            keys_and_masks=[BaseKeyAndMask(
+                base_key=app_constants.MAIN_PARTICLE_BASE_KEY,
+                mask=app_constants.RETINA_MASK)])]
 
     @overrides(MachineDataSpecableVertex.generate_machine_data_specification)
     def generate_machine_data_specification(
