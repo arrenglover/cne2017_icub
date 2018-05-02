@@ -35,7 +35,8 @@ class RetinaFilter(
 
     def __init__(
             self, partition_identifier, filter, row_id, atoms_in_row,
-            label=None, constraints=None):
+            constraints=None):
+        label = "retina filter for row {}".format(row_id)
         MachineVertex.__init__(self, label, constraints)
         MachineDataSpecableVertex.__init__(self)
         AbstractHasAssociatedBinary.__init__(self)
@@ -54,7 +55,7 @@ class RetinaFilter(
                 mask=app_constants.FILTER_BASE_MASK)])]
 
     def get_incoming_partition_constraints(self, partition):
-        if partition == self._partition_identifier:
+        if partition.identifier == self._partition_identifier:
             base_key = \
                 app_constants.RETINA_BASE_KEY | \
                 (1 << app_constants.RETINA_Y_BIT_SHIFT)
@@ -62,6 +63,7 @@ class RetinaFilter(
                 keys_and_masks=[BaseKeyAndMask(
                     base_key=base_key,
                     mask=app_constants.FILTER_BASE_MASK)])]
+        return []
 
     @property
     def resources_required(self):

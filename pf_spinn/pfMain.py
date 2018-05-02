@@ -112,8 +112,8 @@ for y_row in range(0, constants.RETINA_Y_SIZE):
     filter_list.append(vertex)
     front_end.add_machine_vertex_instance(vertex)
     front_end.add_machine_edge_instance(
-        MachineEdge(input_vertex, vertex,
-                    "Edge between retina and filter"),
+        MachineEdge(pre_vertex=input_vertex, post_vertex=vertex,
+                    label="Edge between retina and filter"),
         partition_identifier)
 
 # create edge from main particle to filters
