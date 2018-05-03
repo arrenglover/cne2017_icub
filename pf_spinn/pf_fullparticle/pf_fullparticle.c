@@ -24,8 +24,7 @@
 static uint32_t simulation_ticks = 0;
 static uint32_t infinite_run = 0;
 static uint32_t time = 0;
-static uint32_t update_count = 0;
-static uint32_t received_count = 0;
+
 
 //! data format
 typedef struct data_items_t {
@@ -41,15 +40,19 @@ static data_items_t *particle_data;
 //! timer period
 uint32_t timer_period;
 uint32_t max_counter;
+
+
 uint32_t events_processed = 0;
+uint32_t update_count = 0;
+uint32_t received_count = 0;
 
 //! parameters for this c code
-static float x = 64.0f, nx = -1.0f;
-static float y = 64.0f, ny = -1.0f;
-static float r = 30.0f, nr = -1.0f;
-static float l = 0.0f, nl = -1.0f;
-static float w = 1.0f, nw = -1.0f;
-static uint32_t n = 0;
+float x = 64.0f;
+float y = 64.0f;
+float r = 30.0f;
+float l = 0.0f;
+float w = 1.0f;
+uint32_t n = 0;
 
 static float L[ANG_BUCKETS];
 static circular_buffer retina_buffer, particle_buffer;
@@ -118,6 +121,7 @@ static inline int float_to_int( float data){
 
 //SOME FORWARD DECLARATIONS
 void performFullUpdate();
+void sendstate();
 
 ////////////////////////////////////////////////////////////////////////////////
 // SEND/RECEIVE
@@ -131,6 +135,8 @@ void receive_data_payload(uint key, uint payload) {
 
     //this will be the values of the other particles
 
+    //log_info("received other particle state");
+
     if (!circular_buffer_add(particle_buffer, key)) {
         log_error("Could not add particle key");
     }
@@ -139,7 +145,7 @@ void receive_data_payload(uint key, uint payload) {
     }
 
     if(circular_buffer_size(particle_buffer) >=
-            2 * PACKETS_PER_PARTICLE * n_particles) {
+            2 * PACKETS_PER_PARTICLE * (n_particles-1)) {
         //log_info("set off user event");
         spin1_trigger_user_event(0, 0);
     }
@@ -209,7 +215,7 @@ void user_callback(uint user0, uint user1) {
 
     }
 
-    performFullUpdate();
+    //performFullUpdate();
 
     //sendstate to other particles
 //
@@ -228,9 +234,9 @@ void user_callback(uint user0, uint user1) {
 //
 //    concludeLikelihood();
 //
-//    sendstate();
+   // sendstate();
 //
-//    update_count++;
+    update_count++;
 
 
 }
@@ -502,19 +508,19 @@ void resample() {
 
 void particleResample() {
 
-    w = nw;
-
-    if(nl > 0) {
-        x = nx;
-        y = ny;
-        r = nr;
-        l = nl;
-
-        for(int i = 0; i < ANG_BUCKETS; i++) {
-            L[i] = l / ANG_BUCKETS;
-        }
-
-    }
+//    w = nw;
+//
+//    if(nl > 0) {
+//        x = nx;
+//        y = ny;
+//        r = nr;
+//        l = nl;
+//
+//        for(int i = 0; i < ANG_BUCKETS; i++) {
+//            L[i] = l / ANG_BUCKETS;
+//        }
+//
+//    }
 
 }
 
@@ -575,21 +581,29 @@ void update(uint ticks, uint b) {
 //! \param[in] address: dsg address in sdram memory space
 //! \return bool which is successful if read correctly, false otherwise
 bool read_config(address_t address){
+//    uint32_t xtemp = address[X_COORD];
+//    uint32_t ytemp = address[Y_COORD];
+//    uint32_t rtemp = address[RADIUS];
     x = address[X_COORD];
     y = address[Y_COORD];
     r = address[RADIUS];
+    log_info("x, y, r: %u, %u, %u", (uint32_t)x, (uint32_t)y, (uint32_t)r);
     n = address[PACKET_THRESHOLD];
+    log_info("packet_threshold: %d", n);
     if (address[IS_MAIN] == 0){
         is_main = true;
         main_key = address[MAIN_KEY];
         output_key = address[OUTPUT_KEY];
+        log_info("Main Particle: 0x%08x 0x%08x", main_key, output_key);
     }
     else{
+        log_info("non-main particle");
         is_main = false;
         main_key = 0;
         output_key = 0;
     }
     n_particles = address[N_PARTICLES];
+    log_info("n_particles: %d", n_particles);
     return true;
 }
 
@@ -652,7 +666,7 @@ static bool initialize(uint32_t *timer_period) {
 
     // initialise my input_buffer for receiving packets
     log_info("build buffer");
-    particle_buffer = circular_buffer_initialize(PACKETS_PER_PARTICLE * 8);
+    particle_buffer = circular_buffer_initialize(2 * PACKETS_PER_PARTICLE * n_particles);
     if (particle_buffer == 0){
         return false;
     }

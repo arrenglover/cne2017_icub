@@ -52,7 +52,7 @@ class PfFullParticleVertex(
         self._x = x
         self._y = y
         self._r = r
-        self.n_particles = n_particles
+        self._n_particles = n_particles
         self._packet_threshold = packet_threshold
         self._placement = None
         self._id = id
@@ -71,7 +71,7 @@ class PfFullParticleVertex(
 
     @overrides(AbstractHasAssociatedBinary.get_binary_file_name)
     def get_binary_file_name(self):
-        return "pf_particle.aplx"
+        return "pf_fullparticle.aplx"
 
     @overrides(AbstractHasAssociatedBinary.get_binary_start_type)
     def get_binary_start_type(self):
@@ -130,6 +130,7 @@ class PfFullParticleVertex(
         spec.write_value(self._x)
         spec.write_value(self._y)
         spec.write_value(self._r)
+        #print("Initial Particle State {} {} {}".format(self._x, self._y, self._r))
         spec.write_value(self._packet_threshold)
         if self._main:
             spec.write_value(0)
@@ -146,7 +147,7 @@ class PfFullParticleVertex(
             spec.write_value(1)
             spec.write_value(1)
 
-        spec.write_value(self.n_particles)
+        spec.write_value(self._n_particles)
 
         # End-of-Spec:
         spec.end_specification()
