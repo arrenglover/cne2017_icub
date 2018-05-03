@@ -55,7 +55,7 @@ static float L[ANG_BUCKETS];
 static circular_buffer retina_buffer, agg_buffer;
 static uint32_t *qcopy;
 
-static float x_target;
+float x_target;
 static float y_target;
 static float new_n;
 
@@ -523,7 +523,7 @@ void update(uint ticks, uint b) {
 
     time++;
 
-    log_debug("on tick %d of %d", time, simulation_ticks);
+    //log_debug("on tick %d of %d", time, simulation_ticks);
 
     // check that the run time hasn't already elapsed and thus needs to be
     // killed

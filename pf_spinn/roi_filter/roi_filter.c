@@ -25,6 +25,7 @@ static uint32_t events_processed = 0;
 uint32_t timer_period;
 
 //! parameters for this c code
+uint32_t example_key;
 static uint32_t row_number;
 static uint32_t number_of_cols;
 unsigned char *LUT;
@@ -97,6 +98,7 @@ void receive_data_no_payload(uint key, uint payload) {
 
     events_processed++;
     //send on the data (masking out the flag bit
+    example_key = key;
     while (!spin1_send_mc_packet(key | base_key, 0, NO_PAYLOAD)) {
             spin1_delay_us(1);
     }
@@ -132,8 +134,8 @@ void update(uint ticks, uint b) {
     }
 
     if(time % 1000 == 0) {
-        log_info("Received = %d | Processed = %d | Period 1s",
-            received_count, events_processed);
+        log_info("Received = %d | Processed = %d | Period 1s | 0x%08x | 0x%08x",
+            received_count, events_processed, example_key, base_key);
         events_processed = 0;
         received_count = 0;
     }

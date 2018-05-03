@@ -38,7 +38,7 @@ front_end.setup(n_chips_required=n_chips_required,
                 model_binary_module=binaries)
 #machine = front_end.machine()
 #machine_ip = machine.ethernet_connected_chips[0].ip_address
-machine_ip = "192.168.2.204"
+machine_ip = "192.168.240.1"
 
 # state variables
 use_spinn_link = False
@@ -68,8 +68,8 @@ main_particle = True
 the_main_particle = None
 for x in range(0, n_particles):
     vertex = PfParticleVertex(
-        x=random.randint(0, 304), y=random.randint(0, 240),
-        r=random.randint(0, 30), packet_threshold=packets_threshold,
+        x=constants.RETINA_X_SIZE/2, y=constants.RETINA_Y_SIZE/2,
+        r=constants.INITIAL_R, packet_threshold=packets_threshold,
         label="Particle {}".format(x), id=x, main_particle=main_particle)
 
     if main_particle:
@@ -161,7 +161,7 @@ front_end.add_machine_edge_instance(
         label="Final Result Edge"),
     constants.EDGE_PARTITION_TARGET_POSITION)
 
-front_end.run(20000)
+front_end.run(10000)
 
 # used with test data
 placements = front_end.placements()
