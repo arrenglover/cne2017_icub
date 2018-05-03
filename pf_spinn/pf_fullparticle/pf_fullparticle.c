@@ -62,6 +62,11 @@ static float new_n;
 //! transmission key
 static uint32_t i_has_key;
 static uint32_t base_key;
+
+static bool is_main = false;
+static uint32_t main_key;
+static uint32_t output_key;
+
 static uint32_t my_tdma_id;
 
 //! The recording flags
@@ -77,8 +82,7 @@ typedef enum packet_identifiers {
 typedef enum regions_e {
     SYSTEM_REGION,
     TRANSMISSION_DATA_REGION,
-    RECEPTION_BASE_KEYS_REGION,
-    CONFIG_REGION
+    MAIN_REGION
 } regions_e;
 
 //! values for the priority for each callback
@@ -93,7 +97,8 @@ typedef enum transmission_region_elements {
 
 //! human readable definitions of each element in the config region
 typedef enum config_region_elements {
-    X_COORD = 0, Y_COORD = 1, RADIUS = 2, PACKET_THRESHOLD = 3
+    X_COORD = 0, Y_COORD = 1, RADIUS = 2, PACKET_THRESHOLD = 3, IS_MAIN = 4,
+    MAIN_KEY = 5
 } config_region_elements;
 
 //! \brief converts a int to a float via bit wise conversion
@@ -562,6 +567,14 @@ bool read_config(address_t address){
     y = address[Y_COORD];
     r = address[RADIUS];
     n = address[PACKET_THRESHOLD];
+    if (address[IS_MAIN] == 0){
+        is_main = true;
+        main_key = address[MAIN_KEY];
+        output_key = address[OUTPUT_KEY];
+    }
+    else{
+        is_main = false;
+    }
     return true;
 }
 
@@ -574,17 +587,6 @@ bool read_transmission_keys(address_t address){
     my_tdma_id = address[TDMA_ID];
     return true;
 }
-
-
-//! \brief reads the reception keys keys data region data items
-//! \param[in] address: dsg address in sdram memory space
-//! \return bool which is successful if read correctly, false otherwise
-bool read_reception_keys(address_t address){
-    retina_base_key = address[RETINA_BASE_KEY];
-    aggregation_base_key = address[AGGREGATION_BASE_KEY];
-    return true;
-}
-
 
 //! \brief main initisation method
 //! \param[in] timer_period. the time set for the timer
@@ -611,12 +613,6 @@ static bool initialize(uint32_t *timer_period) {
 
     // get config data
     if (!read_config(data_specification_get_region(CONFIG_REGION, address))){
-        return false;
-    }
-
-    // get config data
-    if (!read_reception_keys(data_specification_get_region(
-            RECEPTION_BASE_KEYS_REGION, address))){
         return false;
     }
 

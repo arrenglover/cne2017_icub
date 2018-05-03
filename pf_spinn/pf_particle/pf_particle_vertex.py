@@ -22,10 +22,6 @@ from spinn_front_end_common.abstract_models.\
     abstract_provides_n_keys_for_partition import \
     AbstractProvidesNKeysForPartition
 
-from spinn_front_end_common.utility_models.\
-    reverse_ip_tag_multicast_source_machine_vertex import \
-    ReverseIPTagMulticastSourceMachineVertex
-
 from pf_spinn import constants as app_constants
 
 from enum import Enum
@@ -43,12 +39,10 @@ class PfParticleVertex(
         value="DATA_REGIONS",
         names=[('SYSTEM', 0),
                ('TRANSMISSION_DATA', 1),
-               ('RECEPTION_BASE_KEYS', 2),
-               ('CONFIG', 3)])
+               ('CONFIG', 2)])
 
-    TRANSMISSION_DATA_SIZE = 16
-    RECEPTION_KEY_SIZE = 8
-    CONFIG_PARAM_SIZE = 24
+    TRANSMISSION_DATA_SIZE = 12
+    CONFIG_PARAM_SIZE = 28
 
     KEYS_REQUIRED = 6
 
@@ -71,8 +65,7 @@ class PfParticleVertex(
     def resources_required(self):
         sdram_required = (
             constants.SYSTEM_BYTES_REQUIREMENT +
-            self.TRANSMISSION_DATA_SIZE + self.RECEPTION_KEY_SIZE +
-            self.CONFIG_PARAM_SIZE)
+            self.TRANSMISSION_DATA_SIZE + self.CONFIG_PARAM_SIZE)
         resources = ResourceContainer(
             cpu_cycles=CPUCyclesPerTickResource(45),
             dtcm=DTCMResource(100), sdram=SDRAMResource(sdram_required))
@@ -134,31 +127,6 @@ class PfParticleVertex(
             spec.write_value(routing_key)
             spec.write_value(self._id)
 
-        # write reception key
-        spec.switch_write_focus(self.DATA_REGIONS.RECEPTION_BASE_KEYS.value)
-        input_vertex = None
-        agg_vertex = None
-        for edge in machine_graph.get_edges_ending_at_vertex(self):
-            if isinstance(edge.pre_vertex, ICUBInputVertex):
-                input_vertex = edge.pre_vertex
-            if isinstance(edge.pre_vertex,
-                          ReverseIPTagMulticastSourceMachineVertex):
-                input_vertex = edge.pre_vertex
-            if isinstance(edge.pre_vertex, PfAggVertex):
-                agg_vertex = edge.pre_vertex
-
-        # retina key
-        # ARREN!!!!! WHAT THE FUDGE IS THIS FOR!?????? YOUR C CODE DONT BLOODY USE IT!
-        spec.write_value(0)
-
-        # agg key
-        routing_key = routing_info.get_first_key_from_pre_vertex(
-            agg_vertex, app_constants.EDGE_PARTITION_RE_SAMPLE)
-        if routing_key is None:
-            raise Exception(
-                "The particle is not receiving from the aggregation core")
-        spec.write_value(routing_key)
-
         # write config params
         spec.switch_write_focus(self.DATA_REGIONS.CONFIG.value)
         spec.write_value(self._x)
@@ -167,17 +135,12 @@ class PfParticleVertex(
         spec.write_value(self._packet_threshold)
         if self._main:
             spec.write_value(0)
-        else:
-            spec.write_value(1)
-
-        # if transmitting to filters, store key
-        if self._main:
             routing_key = routing_info.get_first_key_from_pre_vertex(
                 self, app_constants.EDGE_PARTITION_PARTICLE_TO_FILTER)
-            if routing_key is None:
-                raise Exception("The particle is not sending to the filter")
-            else:
-                spec.write_value(routing_key)
+            spec.write_value(routing_key)
+        else:
+            spec.write_value(1)
+            spec.write_value(1)
 
         # End-of-Spec:
         spec.end_specification()
@@ -190,10 +153,6 @@ class PfParticleVertex(
             region=self.DATA_REGIONS.TRANSMISSION_DATA.value,
             size=self.TRANSMISSION_DATA_SIZE,
             label="My Key")
-        spec.reserve_memory_region(
-            region=self.DATA_REGIONS.RECEPTION_BASE_KEYS.value,
-            size=self.RECEPTION_KEY_SIZE,
-            label="Particle Keys")
         spec.reserve_memory_region(
             region=self.DATA_REGIONS.CONFIG.value,
             size=self.CONFIG_PARAM_SIZE,
