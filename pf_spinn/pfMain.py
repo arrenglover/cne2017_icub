@@ -70,6 +70,7 @@ for x in range(0, n_particles):
     vertex = PfFullParticleVertex(
         x=constants.RETINA_X_SIZE/2, y=constants.RETINA_Y_SIZE/2,
         r=constants.INITIAL_R, packet_threshold=packets_threshold,
+        n_particles=n_particles,
         label="Particle {}".format(x), id=x, main_particle=main_particle)
 
     if main_particle:

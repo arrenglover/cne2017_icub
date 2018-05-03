@@ -49,15 +49,17 @@ static float y = 64.0f, ny = -1.0f;
 static float r = 30.0f, nr = -1.0f;
 static float l = 0.0f, nl = -1.0f;
 static float w = 1.0f, nw = -1.0f;
-static uint32_t n = 0, nn = 0;
+static uint32_t n = 0;
 
 static float L[ANG_BUCKETS];
-static circular_buffer retina_buffer, agg_buffer;
+static circular_buffer retina_buffer, particle_buffer;
 static uint32_t *qcopy;
 
+uint32_t n_particles;
+
 float x_target;
-static float y_target;
-static float new_n;
+float y_target;
+float new_n;
 
 //! transmission key
 static uint32_t i_has_key;
@@ -72,17 +74,16 @@ static uint32_t my_tdma_id;
 //! The recording flags
 static uint32_t recording_flags = 0;
 
-//! key bases
-typedef enum packet_identifiers {
-    COORDS_X_KEY_OFFSET = 0, COORDS_Y_KEY_OFFSET = 1, RADIUS_KEY_OFFSET = 2,
-    L_KEY_OFFSET = 3, W_KEY_OFFSET = 4, N_KEY_OFFSET = 5
+//! key bases offsets
+typedef enum packet_identifiers{
+    X_IND = 0, Y_IND = 1, R_IND = 2, L_IND = 3, W_IND = 4, N_IND = 5
 }packet_identifiers;
 
 //! human readable definitions of each region in SDRAM
 typedef enum regions_e {
     SYSTEM_REGION,
     TRANSMISSION_DATA_REGION,
-    MAIN_REGION
+    CONFIG_REGION
 } regions_e;
 
 //! values for the priority for each callback
@@ -98,7 +99,7 @@ typedef enum transmission_region_elements {
 //! human readable definitions of each element in the config region
 typedef enum config_region_elements {
     X_COORD = 0, Y_COORD = 1, RADIUS = 2, PACKET_THRESHOLD = 3, IS_MAIN = 4,
-    MAIN_KEY = 5
+    MAIN_KEY = 5, OUTPUT_KEY = 6, N_PARTICLES = 7
 } config_region_elements;
 
 //! \brief converts a int to a float via bit wise conversion
@@ -114,6 +115,9 @@ static inline int float_to_int( float data){
     cast_union.x = data;
     return cast_union.y;
 }
+
+//SOME FORWARD DECLARATIONS
+void performFullUpdate();
 
 ////////////////////////////////////////////////////////////////////////////////
 // SEND/RECEIVE
@@ -168,7 +172,6 @@ void user_callback(uint user0, uint user1) {
 
     //float x, y;
     uint32_t n_packets = circular_buffer_size(particle_buffer) / 2;
-    uint32_t pi = 0, particle_key;
 
 
     for(uint32_t i = 0; i < n_packets; i++) {
@@ -181,22 +184,22 @@ void user_callback(uint user0, uint user1) {
 
         //THIS WILL HAVE TO CHANGE!! ASK ABOUT KEY SPACE!!
         switch(key & 0x07) {
-        case(COORDS_X):
+        case(X_IND):
             particle_data[i].x = int_to_float(payload);
             break;
-        case(COORDS_Y):
+        case(Y_IND):
             particle_data[i].y = int_to_float(payload);
             break;
-        case(RADIUS):
+        case(R_IND):
             particle_data[i].r = int_to_float(payload);
             break;
-        case(L):
+        case(L_IND):
             particle_data[i].l = int_to_float(payload);
             break;
-        case(W):
+        case(W_IND):
             particle_data[i].w = int_to_float(payload);
             break;
-        case(N):
+        case(N_IND):
             particle_data[i].n = payload;
             break;
         default:
@@ -246,7 +249,7 @@ void sendstate() {
 
        int dt = current_time - tc[T1_COUNT];
        if(dt < 0) dt += max_counter;
-       while(dt < my_tdma_id * TDMA_WAIT_PERIOD) {
+       while(dt < (int)(my_tdma_id * TDMA_WAIT_PERIOD)) {
             dt = current_time - tc[T1_COUNT];
             if(dt < 0) dt += max_counter;
        }
@@ -254,32 +257,32 @@ void sendstate() {
         //send a message out
         //log_info("sending packets %d", time);
         while (!spin1_send_mc_packet(
-                base_key + COORDS_X_KEY_OFFSET, float_to_int(x),
+                base_key + X_IND, float_to_int(x),
                 WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
         while (!spin1_send_mc_packet(
-                base_key + COORDS_Y_KEY_OFFSET, float_to_int(y),
+                base_key + Y_IND, float_to_int(y),
                 WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
         while (!spin1_send_mc_packet(
-                base_key + RADIUS_KEY_OFFSET, float_to_int(r),
+                base_key + R_IND, float_to_int(r),
                 WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
         while (!spin1_send_mc_packet(
-                base_key + L_KEY_OFFSET, float_to_int(l),
+                base_key + L_IND, float_to_int(l),
                 WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
         while (!spin1_send_mc_packet(
-                base_key + W_KEY_OFFSET, float_to_int(w),
+                base_key + W_IND, float_to_int(w),
                 WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
         while (!spin1_send_mc_packet(
-                base_key + N_KEY_OFFSET, n,
+                base_key + N_IND, n,
                 WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
@@ -291,6 +294,13 @@ void send_roi() {
 
 }
 
+void decodexy(uint32_t coded, float *x, float *y) {
+
+    *x = coded & 0x1FF;
+    *y = (coded >> 9) & 0xFF;
+
+}
+
 uint32_t codexy(float x, float y)
 {
     return ((int)x & 0x1FF) + (((int)y & 0xFF) << 9);
@@ -299,22 +309,22 @@ uint32_t codexy(float x, float y)
 
 void send_position_out()
 {
-    float average_x = 0, average_y = 0;
-    if(has_record_key) {
+//    float average_x = 0, average_y = 0;
+    if(is_main) {
 
-        for(uint32_t i = 0; i < n_particles; i++) {
-            average_x += particle_data[i].x * particle_data[i].w;
-            average_y += particle_data[i].y * particle_data[i].w;
-        }
+//        for(uint32_t i = 0; i < n_particles; i++) {
+//            average_x += particle_data[i].x * particle_data[i].w;
+//            average_y += particle_data[i].y * particle_data[i].w;
+//        }
 
         //send a message out
         while (!spin1_send_mc_packet(
-            base_record_key + (codexy(particle_data[partner_i].x, particle_data[partner_i].y) << 1), 0, NO_PAYLOAD)) {
+            output_key + (codexy(x, y) << 1), 0, NO_PAYLOAD)) {
             spin1_delay_us(1);
         }
         static int dropper = 0;
         if(dropper % 10000 == 0)
-            log_info("Sending output: %f %f", particle_data[partner_i].x, particle_data[partner_i].y);
+            log_info("Sending output: %f %f", x, y);
 
     }
 
@@ -323,11 +333,13 @@ void send_position_out()
 ////////////////////////////////////////////////////////////////////////////////
 // ALGORITHM FUNCTIONS
 ////////////////////////////////////////////////////////////////////////////////
+void normalise();
+void incLikelihood(float vx, float vy);
 
 void performFullUpdate()
 {
     //normalise all the weights, get target position
-    normalise(x_target, y_target, new_n);
+    normalise();
     //get average n-window
         //clear the local buffer if too large
     //if(new_n) > current_buffer_size - 30;
@@ -389,7 +401,7 @@ void concludeLikelihood() {
 
 }
 
-void normalise(float &x_target, float &y_target float &new_n) {
+void normalise() {
 
     x_target = 0; y_target = 0; new_n = 0;
     float total = 0;
@@ -458,29 +470,29 @@ void resample() {
 
 
 
-    float rn = 1.0 * (double)rand() / RAND_MAX;
-    if(rn > 1.0) {
-
-            //set resampled data to random values
-            resampled_data.x = 10 + rand() % 284;
-            resampled_data.y = 10 + rand() % 220;
-            resampled_data.r = 20.0 + rand() % 10;
-            resampled_data.l = particle_data[partner_i].l;
-            resampled_data.w = particle_data[partner_i].w;
-            resampled_data.n = particle_data[partner_i].n;
-
-        } else {
-
-            //set resampled according to distribution of weights
-            float accumed_sum = 0.0;
-            uint32_t j = 0;
-            for(j = 0; j < n_particles; j++) {
-                accumed_sum += particle_data[j].w;
-                if(accumed_sum > rn) break;
-            }
-            resampled_data = particle_data[j];
-
-        }
+//    float rn = 1.0 * (double)rand() / RAND_MAX;
+//    if(rn > 1.0) {
+//
+//            //set resampled data to random values
+//            resampled_data.x = 10 + rand() % 284;
+//            resampled_data.y = 10 + rand() % 220;
+//            resampled_data.r = 20.0 + rand() % 10;
+//            resampled_data.l = particle_data[partner_i].l;
+//            resampled_data.w = particle_data[partner_i].w;
+//            resampled_data.n = particle_data[partner_i].n;
+//
+//        } else {
+//
+//            //set resampled according to distribution of weights
+//            float accumed_sum = 0.0;
+//            uint32_t j = 0;
+//            for(j = 0; j < n_particles; j++) {
+//                accumed_sum += particle_data[j].w;
+//                if(accumed_sum > rn) break;
+//            }
+//            resampled_data = particle_data[j];
+//
+//        }
 
 
 
@@ -509,6 +521,12 @@ void particleResample() {
 ////////////////////////////////////////////////////////////////////////////////
 // SYSTEM INITIALISATION
 ////////////////////////////////////////////////////////////////////////////////
+
+//! \brief callback for when resuming
+void resume_callback() {
+    time = UINT32_MAX;
+}
+
 
 //! \brief timer tick callback
 //! \param[in] ticks the number of tiemr tick callbacks (not accurate)
@@ -545,19 +563,13 @@ void update(uint ticks, uint b) {
     }
 
     if(time == 0) {
-        log_info("my key = %d : my aggregator key = %d",
-                 base_key, aggregation_base_key);
+        log_info("my key = %d : my aggregator key = %d", base_key);
         sendstate();
     }
 
 
 }
 
-
-//! \brief callback for when resuming
-void resume_callback() {
-    time = UINT32_MAX;
-}
 
 //! \brief reads the config data region data items
 //! \param[in] address: dsg address in sdram memory space
@@ -574,7 +586,10 @@ bool read_config(address_t address){
     }
     else{
         is_main = false;
+        main_key = 0;
+        output_key = 0;
     }
+    n_particles = address[N_PARTICLES];
     return true;
 }
 
@@ -632,16 +647,16 @@ static bool initialize(uint32_t *timer_period) {
     qcopy = spin1_malloc(256 * sizeof(uint32_t));
 
     particle_data =
-        (data_items_t*) spin1_malloc(n_keys * sizeof(data_items_t));
+        (data_items_t*) spin1_malloc(n_particles * sizeof(data_items_t));
 
 
     // initialise my input_buffer for receiving packets
     log_info("build buffer");
-    agg_buffer = circular_buffer_initialize(PACKETS_PER_PARTICLE * 8);
-    if (agg_buffer == 0){
+    particle_buffer = circular_buffer_initialize(PACKETS_PER_PARTICLE * 8);
+    if (particle_buffer == 0){
         return false;
     }
-    log_info("agg_buffer initialised");
+    log_info("particle_buffer initialised");
 
     return true;
 }

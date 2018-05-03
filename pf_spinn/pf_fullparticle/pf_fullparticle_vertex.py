@@ -43,7 +43,7 @@ class PfFullParticleVertex(
 
     KEYS_REQUIRED = 6
 
-    def __init__(self, x, y, r, packet_threshold, label, id, main_particle,
+    def __init__(self, x, y, r, packet_threshold, n_particles, label, id, main_particle,
                  constraints=None):
         MachineVertex.__init__(self, label=label, constraints=constraints)
 
@@ -52,6 +52,7 @@ class PfFullParticleVertex(
         self._x = x
         self._y = y
         self._r = r
+        self.n_particles = n_particles
         self._packet_threshold = packet_threshold
         self._placement = None
         self._id = id
@@ -143,6 +144,9 @@ class PfFullParticleVertex(
         else:
             spec.write_value(1)
             spec.write_value(1)
+            spec.write_value(1)
+
+        spec.write_value(self.n_particles)
 
         # End-of-Spec:
         spec.end_specification()
