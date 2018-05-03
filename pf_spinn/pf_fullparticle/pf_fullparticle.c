@@ -64,10 +64,6 @@ static uint32_t i_has_key;
 static uint32_t base_key;
 static uint32_t my_tdma_id;
 
-//! recpetion key params
-static uint32_t retina_base_key;
-static uint32_t aggregation_base_key;
-
 //! The recording flags
 static uint32_t recording_flags = 0;
 
@@ -94,11 +90,6 @@ typedef enum callback_priorities {
 typedef enum transmission_region_elements {
     HAS_KEY = 0, MY_KEY = 1, TDMA_ID = 2
 } transmission_region_elements;
-
-//! human readable definitions of each element in the reception region
-typedef enum reception_region_elements {
-    RETINA_BASE_KEY = 0, AGGREGATION_BASE_KEY = 1
-} reception_region_elements;
 
 //! human readable definitions of each element in the config region
 typedef enum config_region_elements {

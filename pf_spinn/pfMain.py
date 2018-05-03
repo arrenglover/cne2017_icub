@@ -21,6 +21,7 @@ from pf_spinn import binaries
 from pf_spinn import constants
 from pf_spinn.ICUB_input_vertex.ICUB_input_vertex import ICUBInputVertex
 from pf_spinn.ICUB_output_vertex.ICUB_output_vertex import ICUBOutputVertex
+from pf_spinn.pf_fullparticle import PfFullParticleVertex
 from pf_spinn.pf_agg.pf_agg_vertex import PfAggVertex
 from pf_spinn.pf_particle.pf_particle_vertex import PfParticleVertex
 from pf_spinn.roi_filter.roi_filter_vertex import RetinaFilter
@@ -60,14 +61,13 @@ spike_train = load_spike_train(filename)
 
 # VERTICES
 particle_list = list()
-agg_list = list()
 filter_list = list()
 
 # create particles
 main_particle = True
 the_main_particle = None
 for x in range(0, n_particles):
-    vertex = PfParticleVertex(
+    vertex = PfFullParticleVertex(
         x=constants.RETINA_X_SIZE/2, y=constants.RETINA_Y_SIZE/2,
         r=constants.INITIAL_R, packet_threshold=packets_threshold,
         label="Particle {}".format(x), id=x, main_particle=main_particle)
@@ -78,14 +78,6 @@ for x in range(0, n_particles):
 
     front_end.add_machine_vertex_instance(vertex)
     particle_list.append(vertex)
-
-# create aggregator
-for x in range(0, n_particles):
-    vertex = PfAggVertex(
-        record_data=(x == 0), n_particles=n_particles,
-        label="Aggrigator {}".format(x))
-    front_end.add_machine_vertex_instance(vertex)
-    agg_list.append(vertex)
 
 # create "input"
 # running with test data use this vertex
@@ -103,6 +95,11 @@ else:
         label="Input Vertex", send_buffer_times=spike_train)
     front_end.add_machine_vertex_instance(input_vertex)
 
+output_vertex = ICUBOutputVertex(
+    spinnaker_link_id=spinnaker_link_used, board_address=None,
+    label="Output Vertex")
+front_end.add_machine_vertex_instance(output_vertex)
+
 # create retina filters and edges from retina to filters
 for y_row in range(0, constants.RETINA_Y_SIZE):
     partition_identifier = "retina_slice_row_{}".format(y_row)
@@ -116,16 +113,11 @@ for y_row in range(0, constants.RETINA_Y_SIZE):
                     label="Edge between retina and filter"),
         partition_identifier)
 
-# create edge from main particle to filters
+# EDGES from main_particle to filters
 for filter_vertex in filter_list:
     front_end.add_machine_edge_instance(
         MachineEdge(the_main_particle, filter_vertex),
         constants.EDGE_PARTITION_PARTICLE_TO_FILTER)
-
-output_vertex = ICUBOutputVertex(
-    spinnaker_link_id=spinnaker_link_used, board_address=None,
-    label="Output Vertex")
-front_end.add_machine_vertex_instance(output_vertex)
 
 # EDGES from filter to particles
 for x in range(0, n_particles):
@@ -135,28 +127,22 @@ for x in range(0, n_particles):
                 filter_vertex, particle_list[x],
                 label="Edge Input to P{}".format(x)),
             constants.EDGE_PARTITION_EVENT)
-        
+
+# EDGES from particles to particles
 for x in range(0, n_particles):
     for y in range(0, n_particles):
+        if(x == y):
+            continue
         front_end.add_machine_edge_instance(
             MachineEdge(
                 particle_list[x],
-                agg_list[y], label="Edge P{} to A{}".format(x, y)),
+                particle_list[y], label="Edge P{} to P{}".format(x, y)),
             constants.EDGE_PARTITION_PARTICLE_STATE)
 
-
-for x in range(0, n_particles):
-    front_end.add_machine_edge_instance(
-        MachineEdge(
-            agg_list[x],
-            particle_list[x],
-            label="Edge A{} to P{}".format(x, x)),
-        constants.EDGE_PARTITION_RE_SAMPLE)
-
-# used with the icub
+# EDGES from main_particle to output
 front_end.add_machine_edge_instance(
     MachineEdge(
-        agg_list[0],
+        the_main_particle,
         output_vertex,
         label="Final Result Edge"),
     constants.EDGE_PARTITION_TARGET_POSITION)
@@ -166,8 +152,9 @@ front_end.run(10000)
 # used with test data
 placements = front_end.placements()
 buffer_manager = front_end.buffer_manager()
-placement = placements.get_placement_of_vertex(agg_list[0])
-data = agg_list[0].get_data(placement, buffer_manager)
+placement = placements.get_placement_of_vertex(particle_list[0])
+data = particle_list[0].get_data(placement, buffer_manager)
+
 print(data)
 
 front_end.stop()

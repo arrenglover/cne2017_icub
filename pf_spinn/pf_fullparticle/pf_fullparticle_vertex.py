@@ -12,6 +12,8 @@ from spinn_front_end_common.abstract_models.impl.machine_data_specable_vertex \
 from spinn_front_end_common.abstract_models.abstract_has_associated_binary \
     import AbstractHasAssociatedBinary
 from spinn_front_end_common.utilities.utility_objs import ExecutableType
+from spinn_front_end_common.interface.buffer_management.buffer_models\
+    .abstract_receive_buffers_to_host import AbstractReceiveBuffersToHost
 
 from spinn_front_end_common.abstract_models.\
     abstract_provides_n_keys_for_partition import \
@@ -29,9 +31,9 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class PfParticleVertex(
+class PfFullParticleVertex(
         MachineVertex, MachineDataSpecableVertex, AbstractHasAssociatedBinary,
-        AbstractProvidesNKeysForPartition):
+        AbstractReceiveBuffersToHost, AbstractProvidesNKeysForPartition):
 
     DATA_REGIONS = Enum(
         value="DATA_REGIONS",
@@ -73,7 +75,7 @@ class PfParticleVertex(
 
     @overrides(AbstractHasAssociatedBinary.get_binary_file_name)
     def get_binary_file_name(self):
-        return "pf_particle.aplx"
+        return "pf_fullparticle.aplx"
 
     @overrides(AbstractHasAssociatedBinary.get_binary_start_type)
     def get_binary_start_type(self):
