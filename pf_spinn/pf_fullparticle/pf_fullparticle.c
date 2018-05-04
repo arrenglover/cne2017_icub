@@ -92,7 +92,7 @@ typedef enum regions_e {
 
 //! values for the priority for each callback
 typedef enum callback_priorities {
-    MC_PACKET = -1, MCPL_PACKET = 0, SDP_DMA = 1, USER = 4, TIMER = 3
+    MC_PACKET = -1, MCPL_PACKET = -1, SDP_DMA = 1, USER = 4, TIMER = 3
 } callback_priorities;
 
 //! human readable definitions of each element in the transmission region
@@ -174,14 +174,17 @@ void receive_data_no_payload(uint key, uint payload) {
 //! \param[in] random param2
 void user_callback(uint user0, uint user1) {
 
+
     //circular_buffer_clear(particle_buffer);
     use(user0);
     use(user1);
 
-    uint32_t temp = 0;
-    while(circular_buffer_size(particle_buffer) > 0) {
-        circular_buffer_get_next(particle_buffer, &temp);
-    }
+    //uint cpsr = spin1_fiq_disable();
+    circular_buffer_clear(particle_buffer);
+
+    //spin1_mode_restore(cpsr);
+
+    spin1_delay_us(100);
 
     update_count++;
     sendstate();
@@ -263,6 +266,7 @@ void sendstate() {
 
     //we need to send X, Y, R, W, N
 
+
     //log_info("sending state, %d", sv->cpu_clk);
     if(i_has_key == 1) {
        uint32_t current_time = tc[T1_COUNT];
@@ -277,6 +281,7 @@ void sendstate() {
             dt = current_time - tc[T1_COUNT];
             if(dt < 0) dt += max_counter;
        }
+
 
 
         //send a message out
@@ -354,10 +359,10 @@ void send_position_out()
 //            spin1_delay_us(1);
 //        }
 
-        static int dropper = 0;
-        if(dropper % 10000 == 0)
-            log_info("Sending output: %f %f", x, y);
-        dropper++;
+//        static int dropper = 0;
+//        if(dropper % 100 == 0)
+//            log_info("Sending output: %u %u", uint32_t(x), uint32_t(y));
+//        dropper++;
 
     }
 

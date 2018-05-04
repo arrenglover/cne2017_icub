@@ -39,7 +39,7 @@ front_end.setup(n_chips_required=n_chips_required,
                 model_binary_module=binaries)
 
 # state variables
-use_spinn_link = False
+use_spinn_link = True
 machine_time_step = 1000
 time_scale_factor = 1
 n_particles = 20
