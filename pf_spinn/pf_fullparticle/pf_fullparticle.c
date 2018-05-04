@@ -45,6 +45,7 @@ uint32_t max_counter;
 uint32_t events_processed = 0;
 uint32_t update_count = 0;
 uint32_t received_count = 0;
+uint32_t dropped_count = 0;
 
 //! parameters for this c code
 float x = 64.0f;
@@ -162,6 +163,7 @@ void receive_data_no_payload(uint key, uint payload) {
     //this will be the events
     if (!circular_buffer_add(retina_buffer, key)) {
         //log_error("Could not add 1000 events");
+        dropped_count++;
     }
     received_count++;
 
@@ -176,8 +178,21 @@ void user_callback(uint user0, uint user1) {
     use(user0);
     use(user1);
 
+    uint32_t temp = 0;
+    while(circular_buffer_size(particle_buffer) > 0) {
+        circular_buffer_get_next(particle_buffer, &temp);
+    }
+
+    update_count++;
+    sendstate();
+
+    return;
+
+
     //float x, y;
     uint32_t n_packets = circular_buffer_size(particle_buffer) / 2;
+
+    //REMEMER TO ADD THIS PARTICLES DATA TO THE
 
 
     for(uint32_t i = 0; i < n_packets; i++) {
@@ -188,7 +203,10 @@ void user_callback(uint user0, uint user1) {
         if(!circular_buffer_get_next(particle_buffer, &payload))
             log_error("Could not get payload from buffer");
 
-        //THIS WILL HAVE TO CHANGE!! ASK ABOUT KEY SPACE!!
+        //IF WE DON"T KNOW THE KEY FROM WHICH THE PACKET CAME FROM  - THE DATA TYPE FLAG MIGHT NOT BE IN THE BOTTOM 3
+        //BITS! WE NEED TO KNOW THE BASE_KEY OF THE PARTICLE THAT SENT IT?
+        //IF THEY NEED 6 BITS THEY WILL ROUND UP TO THE BIGGEST FACTOR OF 2 (8). SO THE LOWEST BIT
+        //THAT REPRESENTS THE KEY SPACE WILL BE b00001000 = 8
         switch(key & 0x07) {
         case(X_IND):
             particle_data[i].x = int_to_float(payload);
@@ -260,6 +278,7 @@ void sendstate() {
             if(dt < 0) dt += max_counter;
        }
 
+
         //send a message out
         //log_info("sending packets %d", time);
         while (!spin1_send_mc_packet(
@@ -292,10 +311,16 @@ void sendstate() {
                 WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
+    } else {
+        log_info("Particle tried to send a packet without a key");
     }
+
 }
 
 void send_roi() {
+
+    //this will send to the filters the updated ROI
+    //only if the main_particle
 
 
 }
@@ -324,13 +349,15 @@ void send_position_out()
 //        }
 
         //send a message out
-        while (!spin1_send_mc_packet(
-            output_key + (codexy(x, y) << 1), 0, NO_PAYLOAD)) {
-            spin1_delay_us(1);
-        }
+//        while (!spin1_send_mc_packet(
+//            output_key + (codexy(x, y) << 1), 0, NO_PAYLOAD)) {
+//            spin1_delay_us(1);
+//        }
+
         static int dropper = 0;
         if(dropper % 10000 == 0)
             log_info("Sending output: %f %f", x, y);
+        dropper++;
 
     }
 
@@ -533,7 +560,6 @@ void resume_callback() {
     time = UINT32_MAX;
 }
 
-
 //! \brief timer tick callback
 //! \param[in] ticks the number of tiemr tick callbacks (not accurate)
 //! \param[in] b: unknown
@@ -562,20 +588,22 @@ void update(uint ticks, uint b) {
     }
 
     if(time % 1000 == 0) {
-        log_info("Update Rate = %d Hz | # EventProcessed = %d Hz | Events Received = %d Hz", update_count, events_processed, received_count);
+        log_info("Update Rate = %d Hz | # EventProcessed = %d Hz | "
+            "Events Received = %d Hz  | Dropped: %d Hz",
+            update_count, events_processed, received_count, dropped_count);
         update_count = 0;
         events_processed = 0;
         received_count = 0;
+        dropped_count = 0;
     }
 
     if(time == 0) {
-        log_info("my key = %d : my aggregator key = %d", base_key);
+        log_info("my key = %d", base_key);
         sendstate();
     }
 
 
 }
-
 
 //! \brief reads the config data region data items
 //! \param[in] address: dsg address in sdram memory space
@@ -620,8 +648,9 @@ bool read_transmission_keys(address_t address){
 //! \brief main initisation method
 //! \param[in] timer_period. the time set for the timer
 //! \return bool true if successful, false otherwise
-static bool initialize(uint32_t *timer_period) {
-    log_info("Initialise: started\n");
+bool initialize(uint32_t *timer_period) {
+
+    log_info("Initialise: started");
 
     // Get the address this core's DTCM data starts at from SRAM
     address_t address = data_specification_get_data_address();
@@ -652,25 +681,34 @@ static bool initialize(uint32_t *timer_period) {
     }
 
     // initialise my input_buffer for receiving packets
-    log_info("build buffer");
-    retina_buffer = circular_buffer_initialize(256);
+
+    retina_buffer = circular_buffer_initialize(256); //int ints
     if (retina_buffer == 0){
+        log_info("Could not create retina buffer");
         return false;
     }
+
     log_info("retina_buffer initialised");
-    qcopy = spin1_malloc(256 * sizeof(uint32_t));
+    qcopy = spin1_malloc(256 * sizeof(uint32_t)); //int bytes
+    if(qcopy == 0) {
+        log_info("could not allocate retina copy space");
+        return false;
+    }
 
     particle_data =
         (data_items_t*) spin1_malloc(n_particles * sizeof(data_items_t));
-
-
-    // initialise my input_buffer for receiving packets
-    log_info("build buffer");
-    particle_buffer = circular_buffer_initialize(2 * PACKETS_PER_PARTICLE * n_particles);
-    if (particle_buffer == 0){
+    if(particle_data == 0) {
+        log_info("could not allocate particle data table");
         return false;
     }
-    log_info("particle_buffer initialised");
+
+    // initialise my input_buffer for receiving packets
+    particle_buffer = circular_buffer_initialize(2 * PACKETS_PER_PARTICLE * n_particles);
+    if (particle_buffer == 0){
+        log_info("Could not create particle data read buffer");
+        return false;
+    }
+    log_info("Initialisation successful");
 
     return true;
 }
@@ -684,6 +722,7 @@ void c_main() {
     if (!initialize(&timer_period)) {
         log_error("failed to init");
         rt_error(RTE_SWERR);
+        return;
     }
 
     // set timer tick value to configured value
