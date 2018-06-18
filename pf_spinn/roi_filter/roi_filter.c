@@ -80,7 +80,11 @@ void update_LUT(int x, int y, int r) {
 void receive_data_payload(uint key, uint payload)
 {
     //here we receive the region of interest and need to set the values
-    update_LUT(X_MASK(key), Y_MASK(key), payload);
+    static int i = 0;
+    if(i++ % 1000 == 0) {
+        log_info("Received new ROI %d %d %d", X_MASK(key), Y_MASK(key), payload);
+    }
+    //update_LUT(X_MASK(key), Y_MASK(key), payload);
 
 }
 

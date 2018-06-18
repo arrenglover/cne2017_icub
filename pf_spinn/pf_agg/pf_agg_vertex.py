@@ -190,7 +190,7 @@ class PfAggVertex(
                 self, app_constants.EDGE_PARTITION_RE_SAMPLE)
         partner_vertex = list(partner_edges.edges)[0].post_vertex
         partner_key = routing_info.get_first_key_from_pre_vertex(
-            partner_vertex, app_constants.EDGE_PARTITION_PARTICLE_STATE)
+            partner_vertex, app_constants.EDGE_PARTITION_PARTICLE_TO_PARTICLE)
         spec.write_value(partner_key)
         
         # writing particle keys

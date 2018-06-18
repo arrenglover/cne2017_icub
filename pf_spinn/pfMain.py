@@ -39,7 +39,8 @@ front_end.setup(n_chips_required=n_chips_required,
                 model_binary_module=binaries)
 
 # state variables
-use_spinn_link = True
+use_spinn_link = False
+filename = "data.log.spiking.txt"
 machine_time_step = 1000
 time_scale_factor = 1
 n_particles = 20
@@ -53,8 +54,10 @@ packets_threshold = 30
 #    processor for chip in machine.chips for processor in chip.processors
 #    if not processor.is_monitor])
 
-filename = "data.log.spiking.txt"
-spike_train = load_spike_train(filename)
+if not use_spinn_link:
+    spike_train = load_spike_train(filename)
+    if spike_train == -1:
+        quit()
 
 # VERTICES
 particle_list = list()
@@ -107,7 +110,7 @@ for y_row in range(0, constants.RETINA_Y_SIZE):
     partition_identifier = "retina_slice_row_{}".format(y_row)
     vertex = RetinaFilter(
         partition_identifier=partition_identifier, filter=y_row,
-        row_id=y_row, atoms_in_row=constants.RETINA_Y_SIZE)
+        row_id=y_row)
     filter_list.append(vertex)
     front_end.add_machine_vertex_instance(vertex)
     front_end.add_machine_edge_instance(
@@ -119,7 +122,7 @@ for y_row in range(0, constants.RETINA_Y_SIZE):
 for filter_vertex in filter_list:
     front_end.add_machine_edge_instance(
         MachineEdge(the_main_particle, filter_vertex),
-        constants.EDGE_PARTITION_PARTICLE_TO_FILTER)
+        constants.EDGE_PARTITION_MAIN_TO_FILTER)
 
 # EDGES from filter to particles
 for x in range(0, n_particles):
@@ -128,7 +131,7 @@ for x in range(0, n_particles):
             MachineEdge(
                 filter_vertex, particle_list[x],
                 label="Edge Input to P{}".format(x)),
-            constants.EDGE_PARTITION_EVENT)
+            constants.EDGE_PARTITION_FILTER_TO_PARTICLES)
 
 # EDGES from particles to particles
 for x in range(0, n_particles):
@@ -139,7 +142,7 @@ for x in range(0, n_particles):
             MachineEdge(
                 particle_list[x],
                 particle_list[y], label="Edge P{} to P{}".format(x, y)),
-            constants.EDGE_PARTITION_PARTICLE_STATE)
+            constants.EDGE_PARTITION_PARTICLE_TO_PARTICLE)
 
 # EDGES from main_particle to output
 front_end.add_machine_edge_instance(

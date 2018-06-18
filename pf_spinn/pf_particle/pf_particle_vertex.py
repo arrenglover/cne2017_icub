@@ -86,7 +86,7 @@ class PfParticleVertex(
     @overrides(AbstractProvidesOutgoingPartitionConstraints.
                get_outgoing_partition_constraints)
     def get_outgoing_partition_constraints(self, partition):
-        if partition == app_constants.EDGE_PARTITION_PARTICLE_TO_FILTER:
+        if partition == app_constants.EDGE_PARTITION_MAIN_TO_FILTER:
             return [FixedKeyAndMaskConstraint(
             keys_and_masks=[BaseKeyAndMask(
                 base_key=app_constants.MAIN_PARTICLE_BASE_KEY,
@@ -115,7 +115,7 @@ class PfParticleVertex(
         spec.switch_write_focus(self.DATA_REGIONS.TRANSMISSION_DATA.value)
 
         routing_key = routing_info.get_first_key_from_pre_vertex(
-            self, app_constants.EDGE_PARTITION_PARTICLE_STATE)
+            self, app_constants.EDGE_PARTITION_PARTICLE_TO_PARTICLE)
         if routing_key is None:
             raise Exception("FUCK")
         if routing_key is None:
@@ -136,7 +136,7 @@ class PfParticleVertex(
         if self._main:
             spec.write_value(0)
             routing_key = routing_info.get_first_key_from_pre_vertex(
-                self, app_constants.EDGE_PARTITION_PARTICLE_TO_FILTER)
+                self, app_constants.EDGE_PARTITION_MAIN_TO_FILTER)
             spec.write_value(routing_key)
         else:
             spec.write_value(1)

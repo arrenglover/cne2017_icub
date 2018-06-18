@@ -11,7 +11,8 @@
 #include <circular_buffer.h>
 
 #define X_MASK(x) x&0x1FF
-#define Y_MASK(x) (x>>9)&0xFF
+#define Y_MASK(y) (y>>9)&0xFF
+#define XY_CODE(x, y) (x&0x1FF)|((y&0xFF)<<9)
 
 #define ANG_BUCKETS 64
 #define INLIER_PAR 2
@@ -70,7 +71,7 @@ static uint32_t i_has_key;
 static uint32_t base_key;
 
 static bool is_main = false;
-static uint32_t main_key;
+static uint32_t filter_update_key;
 static uint32_t output_key;
 
 static uint32_t my_tdma_id;
@@ -103,7 +104,7 @@ typedef enum transmission_region_elements {
 //! human readable definitions of each element in the config region
 typedef enum config_region_elements {
     X_COORD = 0, Y_COORD = 1, RADIUS = 2, PACKET_THRESHOLD = 3, IS_MAIN = 4,
-    MAIN_KEY = 5, OUTPUT_KEY = 6, N_PARTICLES = 7
+    FILTER_UPDATE_KEY = 5, OUTPUT_KEY = 6, N_PARTICLES = 7
 } config_region_elements;
 
 //! \brief converts a int to a float via bit wise conversion
@@ -123,6 +124,7 @@ static inline int float_to_int( float data){
 //SOME FORWARD DECLARATIONS
 void performFullUpdate();
 void sendstate();
+void send_roi();
 
 ////////////////////////////////////////////////////////////////////////////////
 // SEND/RECEIVE
@@ -187,6 +189,7 @@ void user_callback(uint user0, uint user1) {
     spin1_delay_us(100);
 
     update_count++;
+    send_roi();
     sendstate();
 
     return;
@@ -326,6 +329,12 @@ void send_roi() {
 
     //this will send to the filters the updated ROI
     //only if the main_particle
+
+    if(is_main) {
+        while (!spin1_send_mc_packet(filter_update_key + XY_CODE(0, 64), 30, WITH_PAYLOAD)) {
+                spin1_delay_us(1);
+        }
+    }
 
 
 }
@@ -592,6 +601,10 @@ void update(uint ticks, uint b) {
 
     }
 
+    if(time == 0) {
+        log_info("my key = %d", base_key);
+    }
+
     if(time % 1000 == 0) {
         log_info("Update Rate = %d Hz | # EventProcessed = %d Hz | "
             "Events Received = %d Hz  | Dropped: %d Hz",
@@ -603,7 +616,6 @@ void update(uint ticks, uint b) {
     }
 
     if(time == 0) {
-        log_info("my key = %d", base_key);
         sendstate();
     }
 
@@ -625,14 +637,14 @@ bool read_config(address_t address){
     log_info("packet_threshold: %d", n);
     if (address[IS_MAIN] == 0){
         is_main = true;
-        main_key = address[MAIN_KEY];
+        filter_update_key = address[FILTER_UPDATE_KEY];
         output_key = address[OUTPUT_KEY];
-        log_info("Main Particle: 0x%08x 0x%08x", main_key, output_key);
+        log_info("Main Particle: 0x%08x 0x%08x", filter_update_key, output_key);
     }
     else{
         log_info("non-main particle");
         is_main = false;
-        main_key = 0;
+        filter_update_key = 0;
         output_key = 0;
     }
     n_particles = address[N_PARTICLES];

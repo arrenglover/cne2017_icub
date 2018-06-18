@@ -31,7 +31,9 @@ logger = logging.getLogger(__name__)
 
 class PfFullParticleVertex(
         MachineVertex, MachineDataSpecableVertex, AbstractHasAssociatedBinary,
+        AbstractProvidesOutgoingPartitionConstraints,
         AbstractProvidesNKeysForPartition):
+
     DATA_REGIONS = Enum(
         value="DATA_REGIONS",
         names=[('SYSTEM', 0),
@@ -79,16 +81,28 @@ class PfFullParticleVertex(
 
     @overrides(AbstractProvidesNKeysForPartition.get_n_keys_for_partition)
     def get_n_keys_for_partition(self, partition, graph_mapper):
-        return self.KEYS_REQUIRED
+        if partition.identifier == app_constants.EDGE_PARTITION_PARTICLE_TO_PARTICLE:
+            return self.KEYS_REQUIRED
+        else:
+            return 0 #shouldn't be used if mask/key is used instead
 
     @overrides(AbstractProvidesOutgoingPartitionConstraints.
                get_outgoing_partition_constraints)
     def get_outgoing_partition_constraints(self, partition):
-        if partition == app_constants.EDGE_PARTITION_PARTICLE_TO_FILTER:
+        if partition.identifier == app_constants.EDGE_PARTITION_MAIN_TO_FILTER:
             return [FixedKeyAndMaskConstraint(
                 keys_and_masks=[BaseKeyAndMask(
-                    base_key=app_constants.MAIN_PARTICLE_BASE_KEY,
-                    mask=app_constants.RETINA_MASK)])]
+                    base_key=app_constants.MAIN_PARTICLE_ROI_KEY,
+                    mask=app_constants.MESSAGE_TYPE_MASK)])]
+        elif partition.identifier == app_constants.EDGE_PARTITION_TARGET_POSITION:
+            return [FixedKeyAndMaskConstraint(
+                keys_and_masks=[BaseKeyAndMask(
+                    base_key=app_constants.MAIN_PARTICLE_TARGET_KEY,
+                    mask=app_constants.MESSAGE_TYPE_MASK)])]
+        elif partition.identifier == app_constants.EDGE_PARTITION_PARTICLE_TO_PARTICLE:
+            return []
+        else:
+            raise Exception("Asking for a partition not defined")
 
     @overrides(MachineDataSpecableVertex.generate_machine_data_specification)
     def generate_machine_data_specification(
@@ -113,9 +127,9 @@ class PfFullParticleVertex(
         spec.switch_write_focus(self.DATA_REGIONS.TRANSMISSION_DATA.value)
 
         routing_key = routing_info.get_first_key_from_pre_vertex(
-            self, app_constants.EDGE_PARTITION_PARTICLE_STATE)
+            self, app_constants.EDGE_PARTITION_PARTICLE_TO_PARTICLE)
         if routing_key is None:
-            raise Exception("FUCK")
+            raise Exception("Error: the routing key is none!")
         if routing_key is None:
             spec.write_value(0)
             spec.write_value(0)
@@ -136,7 +150,7 @@ class PfFullParticleVertex(
             spec.write_value(0)
             # partile to filters
             routing_key = routing_info.get_first_key_from_pre_vertex(
-                self, app_constants.EDGE_PARTITION_PARTICLE_TO_FILTER)
+                self, app_constants.EDGE_PARTITION_MAIN_TO_FILTER)
             spec.write_value(routing_key)
             # paritle to output
             routing_key = routing_info.get_first_key_from_pre_vertex(

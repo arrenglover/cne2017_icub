@@ -1,7 +1,11 @@
 
 def load_spike_train(filename):
 
-    file = open(filename, "r")
+    try:
+        file = open(filename, "r")
+    except:
+        print "Could not open file"
+        return -1
 
     spike_train = [[]] * 1048575
 

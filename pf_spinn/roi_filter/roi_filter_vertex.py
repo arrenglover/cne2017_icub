@@ -34,8 +34,7 @@ class RetinaFilter(
                ('CONFIG', 2)])
 
     def __init__(
-            self, partition_identifier, filter, row_id, atoms_in_row,
-            constraints=None):
+            self, partition_identifier, filter, row_id, constraints=None):
         label = "retina filter for row {}".format(row_id)
         MachineVertex.__init__(self, label, constraints)
         MachineDataSpecableVertex.__init__(self)
@@ -43,7 +42,6 @@ class RetinaFilter(
         AbstractProvidesOutgoingPartitionConstraints.__init__(self)
         self._partition_identifier = partition_identifier
         self._filter = filter
-        self._atoms_in_row = atoms_in_row
         self._row_id = row_id
 
     def get_outgoing_partition_constraints(self, partition):
@@ -56,8 +54,7 @@ class RetinaFilter(
 
     def get_incoming_partition_constraints(self, partition):
         if partition.identifier == self._partition_identifier:
-            base_key = \
-                app_constants.RETINA_BASE_KEY | \
+            base_key = app_constants.RETINA_BASE_KEY | \
                 (self._row_id << app_constants.RETINA_Y_BIT_SHIFT)
             return [FixedKeyAndMaskConstraint(
                 keys_and_masks=[BaseKeyAndMask(
@@ -91,7 +88,7 @@ class RetinaFilter(
         spec.switch_write_focus(self.DATA_REGIONS.TRANSMISSION_DATA.value)
 
         out_going_routing_key = routing_info.get_first_key_from_pre_vertex(
-            self, app_constants.EDGE_PARTITION_EVENT)
+            self, app_constants.EDGE_PARTITION_FILTER_TO_PARTICLES)
 
         if out_going_routing_key is None:
             spec.write_value(0)
