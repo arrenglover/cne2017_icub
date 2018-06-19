@@ -42,6 +42,7 @@ static data_items_t *particle_data;
 uint32_t timer_period;
 uint32_t max_counter;
 
+uint32_t particle_data_received_count = 0;
 
 uint32_t events_processed = 0;
 uint32_t update_count = 0;
@@ -57,7 +58,11 @@ float w = 1.0f;
 uint32_t n = 0;
 
 static float L[ANG_BUCKETS];
-static circular_buffer retina_buffer, particle_buffer;
+static circular_buffer retina_buffer;
+
+static circular_buffer particle_buffer1, particle_buffer2;
+static circular_buffer *proc_buf, *work_buf;
+
 static uint32_t *qcopy;
 
 uint32_t n_particles;
@@ -68,13 +73,16 @@ float new_n;
 
 //! transmission key
 static uint32_t i_has_key;
-static uint32_t base_key;
+static uint32_t p2p_my_key;
+static uint32_t my_tdma_id;
 
 static bool is_main = false;
 static uint32_t filter_update_key;
 static uint32_t output_key;
 
-static uint32_t my_tdma_id;
+bool computing;
+static uint32_t full_buffer;
+static uint32_t my_turn;
 
 //! The recording flags
 static uint32_t recording_flags = 0;
@@ -130,31 +138,6 @@ void send_roi();
 // SEND/RECEIVE
 ////////////////////////////////////////////////////////////////////////////////
 
-
-//! \brief callback for when packet has payload (agg)
-//! \param[in] key: the key received
-//! \param[in] payload: the payload received
-void receive_data_payload(uint key, uint payload) {
-
-    //this will be the values of the other particles
-
-    //log_info("received other particle state");
-
-    if (!circular_buffer_add(particle_buffer, key)) {
-        log_error("Could not add particle key");
-    }
-    if (!circular_buffer_add(particle_buffer, payload)) {
-        log_error("Could not add particle payload");
-    }
-
-    if(circular_buffer_size(particle_buffer) >=
-            2 * PACKETS_PER_PARTICLE * (n_particles-1)) {
-        //log_info("set off user event");
-        spin1_trigger_user_event(0, 0);
-    }
-
-}
-
 //! \brief callback when packet with no payload is received (retina)
 //! \param[in] key: the key received
 //! \param[in] payload: unused. is set to 0
@@ -171,73 +154,135 @@ void receive_data_no_payload(uint key, uint payload) {
 
 }
 
+//! \brief callback for when packet has payload (agg)
+//! \param[in] key: the key received
+//! \param[in] payload: the payload received
+void receive_data_payload(uint key, uint payload) {
+
+    if (!circular_buffer_add(*work_buf, key)) {
+        log_error("Could not add particle key");
+    }
+    if (!circular_buffer_add(*work_buf, payload)) {
+        log_error("Could not add particle payload");
+    }
+
+    uint32_t buf_size = circular_buffer_size(*work_buf);
+
+    //if buf = id we need to send our
+
+    if(computing) return;
+
+    //trigger computation --but first send out my own state.
+    if(buf_size >= full_buffer) {
+        circular_buffer *temp = work_buf;
+        work_buf = proc_buf;
+        proc_buf = temp;
+        if(full_buffer == my_turn)
+            spin1_trigger_user_event(0, 0); //send + compute
+        else
+            spin1_trigger_user_event(2, 0); // compute only
+    } else if(buf_size == my_turn) {
+        spin1_trigger_user_event(1, 0); // send only
+    }
+
+}
+
 //! \brief callback for user
 //! \param[in] random param1
 //! \param[in] random param2
-void user_callback(uint user0, uint user1) {
-
-
-    //circular_buffer_clear(particle_buffer);
-    use(user0);
+void user_callback(uint callback_type, uint user1) {
     use(user1);
 
+    //callback_type:
+    //0: send data then perform computation
+    //1: send data only
+    //2: perform computation only
+
+    // if p2p has been received during computation check we don't need to
+    // already send out our packet (at the end!)
+
     //uint cpsr = spin1_fiq_disable();
-    circular_buffer_clear(particle_buffer);
-
     //spin1_mode_restore(cpsr);
+    //spin1_delay_us(100);
 
-    spin1_delay_us(100);
+    //log_info("User callback type %d", callback_type);
+    if(callback_type < 2) {
+        sendstate();
+        if(callback_type == 1)
+            return;
+    }
+
+    computing = true;
+
+
+    static int divisor = 0;
+    if(divisor++ % 5000 == 0) {
+        uint32_t key, payload;
+        while(circular_buffer_size(*proc_buf) > 1) {
+            circular_buffer_get_next(*proc_buf, &key);
+            circular_buffer_get_next(*proc_buf, &payload);
+            log_info("Key 0x%08x, ID: %d, Payload: %d", key&0xFFFFFFF8, key&0x7, payload);
+        }
+
+    }
+    circular_buffer_clear(*proc_buf);
+    circular_buffer_clear(retina_buffer);
 
     update_count++;
     send_roi();
-    sendstate();
+
+    //race condition between sending here and sending in payload callback
+    if(circular_buffer_size(*work_buf) == my_turn) {
+        sendstate();
+    }
+    computing = false;
 
     return;
 
 
-    //float x, y;
-    uint32_t n_packets = circular_buffer_size(particle_buffer) / 2;
-
-    //REMEMER TO ADD THIS PARTICLES DATA TO THE
-
-
-    for(uint32_t i = 0; i < n_packets; i++) {
-
-        uint32_t key, payload;
-        if(!circular_buffer_get_next(particle_buffer, &key))
-            log_error("Could not get key from buffer");
-        if(!circular_buffer_get_next(particle_buffer, &payload))
-            log_error("Could not get payload from buffer");
-
-        //IF WE DON"T KNOW THE KEY FROM WHICH THE PACKET CAME FROM  - THE DATA TYPE FLAG MIGHT NOT BE IN THE BOTTOM 3
-        //BITS! WE NEED TO KNOW THE BASE_KEY OF THE PARTICLE THAT SENT IT?
-        //IF THEY NEED 6 BITS THEY WILL ROUND UP TO THE BIGGEST FACTOR OF 2 (8). SO THE LOWEST BIT
-        //THAT REPRESENTS THE KEY SPACE WILL BE b00001000 = 8
-        switch(key & 0x07) {
-        case(X_IND):
-            particle_data[i].x = int_to_float(payload);
-            break;
-        case(Y_IND):
-            particle_data[i].y = int_to_float(payload);
-            break;
-        case(R_IND):
-            particle_data[i].r = int_to_float(payload);
-            break;
-        case(L_IND):
-            particle_data[i].l = int_to_float(payload);
-            break;
-        case(W_IND):
-            particle_data[i].w = int_to_float(payload);
-            break;
-        case(N_IND):
-            particle_data[i].n = payload;
-            break;
-        default:
-            log_error("incorrect key value received at aggregator");
-
-        }
-
-    }
+//    //float x, y;
+//    uint32_t n_packets = circular_buffer_size(particle_buffer) / 2;
+//
+//    //REMEMER TO ADD THIS PARTICLES DATA TO THE
+//
+//
+//    for(uint32_t i = 0; i < n_packets; i++) {
+//
+//        uint32_t key, payload;
+//        if(!circular_buffer_get_next(particle_buffer, &key))
+//            log_error("Could not get key from buffer");
+//        if(!circular_buffer_get_next(particle_buffer, &payload))
+//            log_error("Could not get payload from buffer");
+//
+//        //IF WE DON"T KNOW THE KEY FROM WHICH THE PACKET CAME FROM  - THE DATA TYPE FLAG MIGHT NOT BE IN THE BOTTOM 3
+//        //BITS! WE NEED TO KNOW THE p2p_my_key OF THE PARTICLE THAT SENT IT?
+//        //IF THEY NEED 6 BITS THEY WILL ROUND UP TO THE BIGGEST FACTOR OF 2 (8). SO THE LOWEST BIT
+//        //THAT REPRESENTS THE KEY SPACE WILL BE b00001000 = 8
+//        switch(key & 0x07) {
+//        case(X_IND):
+//            particle_data[i].x = int_to_float(payload);
+//            break;
+//        case(Y_IND):
+//            particle_data[i].y = int_to_float(payload);
+//            break;
+//        case(R_IND):
+//            particle_data[i].r = int_to_float(payload);
+//            break;
+//        case(L_IND):
+//            particle_data[i].l = int_to_float(payload);
+//            break;
+//        case(W_IND):
+//            particle_data[i].w = int_to_float(payload);
+//            break;
+//        case(N_IND):
+//            particle_data[i].n = payload;
+//            break;
+//        default:
+//            log_error("incorrect key value received at aggregator");
+//
+//        }
+//
+//    }
 
     //performFullUpdate();
 
@@ -272,50 +317,50 @@ void sendstate() {
 
     //log_info("sending state, %d", sv->cpu_clk);
     if(i_has_key == 1) {
-       uint32_t current_time = tc[T1_COUNT];
-
-       //calculate max_counter;
-       max_counter = timer_period * sv->cpu_clk;
-
-
-       int dt = current_time - tc[T1_COUNT];
-       if(dt < 0) dt += max_counter;
-       while(dt < (int)(my_tdma_id * TDMA_WAIT_PERIOD)) {
-            dt = current_time - tc[T1_COUNT];
-            if(dt < 0) dt += max_counter;
-       }
+//       uint32_t current_time = tc[T1_COUNT];
+//
+//       //calculate max_counter;
+//      max_counter = timer_period * sv->cpu_clk;
+//
+//
+//       int dt = current_time - tc[T1_COUNT];
+//       if(dt < 0) dt += max_counter;
+//       while(dt < (int)(my_tdma_id * TDMA_WAIT_PERIOD)) {
+//            dt = current_time - tc[T1_COUNT];
+//            if(dt < 0) dt += max_counter;
+//       }
 
 
 
         //send a message out
         //log_info("sending packets %d", time);
         while (!spin1_send_mc_packet(
-                base_key + X_IND, float_to_int(x),
+                p2p_my_key + X_IND, float_to_int(x),
                 WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
         while (!spin1_send_mc_packet(
-                base_key + Y_IND, float_to_int(y),
+                p2p_my_key + Y_IND, float_to_int(y),
                 WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
         while (!spin1_send_mc_packet(
-                base_key + R_IND, float_to_int(r),
+                p2p_my_key + R_IND, float_to_int(r),
                 WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
         while (!spin1_send_mc_packet(
-                base_key + L_IND, float_to_int(l),
+                p2p_my_key + L_IND, float_to_int(l),
                 WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
         while (!spin1_send_mc_packet(
-                base_key + W_IND, float_to_int(w),
+                p2p_my_key + W_IND, float_to_int(w),
                 WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
         while (!spin1_send_mc_packet(
-                base_key + N_IND, n,
+                p2p_my_key + N_IND, n,
                 WITH_PAYLOAD)) {
             spin1_delay_us(1);
         }
@@ -331,7 +376,8 @@ void send_roi() {
     //only if the main_particle
 
     if(is_main) {
-        while (!spin1_send_mc_packet(filter_update_key + XY_CODE(0, 64), 30, WITH_PAYLOAD)) {
+        while (!spin1_send_mc_packet(filter_update_key + (XY_CODE(0, 64)),
+                    30, WITH_PAYLOAD)) {
                 spin1_delay_us(1);
         }
     }
@@ -602,10 +648,10 @@ void update(uint ticks, uint b) {
     }
 
     if(time == 0) {
-        log_info("my key = %d", base_key);
+        log_info("my key = %d", p2p_my_key);
     }
 
-    if(time % 1000 == 0) {
+    if(time % 1000 == 999) {
         log_info("Update Rate = %d Hz | # EventProcessed = %d Hz | "
             "Events Received = %d Hz  | Dropped: %d Hz",
             update_count, events_processed, received_count, dropped_count);
@@ -615,7 +661,7 @@ void update(uint ticks, uint b) {
         dropped_count = 0;
     }
 
-    if(time == 0) {
+    if(time == 0 && my_tdma_id == 0) {
         sendstate();
     }
 
@@ -648,6 +694,7 @@ bool read_config(address_t address){
         output_key = 0;
     }
     n_particles = address[N_PARTICLES];
+    full_buffer = 2 * PACKETS_PER_PARTICLE * (n_particles-1);
     log_info("n_particles: %d", n_particles);
     return true;
 }
@@ -657,8 +704,11 @@ bool read_config(address_t address){
 //! \return bool which is successful if read correctly, false otherwise
 bool read_transmission_keys(address_t address){
     i_has_key = address[HAS_KEY];
-    base_key = address[MY_KEY];
+    p2p_my_key = address[MY_KEY];
     my_tdma_id = address[TDMA_ID];
+
+    my_turn = 2 * PACKETS_PER_PARTICLE * my_tdma_id;
+
     return true;
 }
 
@@ -712,19 +762,25 @@ bool initialize(uint32_t *timer_period) {
         return false;
     }
 
-    particle_data =
-        (data_items_t*) spin1_malloc(n_particles * sizeof(data_items_t));
-    if(particle_data == 0) {
-        log_info("could not allocate particle data table");
-        return false;
-    }
+//    particle_data =
+//        (data_items_t*) spin1_malloc(n_particles * sizeof(data_items_t));
+//    if(particle_data == 0) {
+//        log_info("could not allocate particle data table");
+//        return false;
+//    }
 
     // initialise my input_buffer for receiving packets
-    particle_buffer = circular_buffer_initialize(2 * PACKETS_PER_PARTICLE * n_particles);
-    if (particle_buffer == 0){
+    particle_buffer1 = circular_buffer_initialize(2 * PACKETS_PER_PARTICLE * n_particles);
+    particle_buffer2 = circular_buffer_initialize(2 * PACKETS_PER_PARTICLE * n_particles);
+    if (particle_buffer1 == 0 || particle_buffer2 == 0){
         log_info("Could not create particle data read buffer");
         return false;
     }
+    proc_buf = &particle_buffer1;
+    work_buf = &particle_buffer2;
+
+    computing = false;
+
     log_info("Initialisation successful");
 
     return true;

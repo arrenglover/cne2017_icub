@@ -45,8 +45,8 @@ class PfFullParticleVertex(
 
     KEYS_REQUIRED = 6
 
-    def __init__(self, x, y, r, packet_threshold, n_particles, label, id, main_particle,
-                 constraints=None):
+    def __init__(self, x, y, r, packet_threshold, n_particles, label, id,
+                 main_particle, constraints=None):
         MachineVertex.__init__(self, label=label, constraints=constraints)
 
         AbstractProvidesNKeysForPartition.__init__(self)
