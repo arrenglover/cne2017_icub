@@ -15,12 +15,13 @@
 #define XY_CODE(x, y) (x&0x1FF)|((y&0xFF)<<9)
 
 #define ANG_BUCKETS 64
-#define INLIER_PAR 2
-#define MIN_LIKE 10
+#define INLIER_PAR 1
+#define MIN_LIKE 0.2f
 #define SIGMA_SCALER 4.0f
-#define TDMA_WAIT_PERIOD 300
+#define NEGATIVE_BIAS 0.2f;
 #define PACKETS_PER_PARTICLE 6
 #define DIV_VALUE 5000
+#define EVENT_WINDOW_SIZE 1000
 
 //! control value, which says how many timer ticks to run for before exiting
 static uint32_t simulation_ticks = 0;
@@ -29,16 +30,22 @@ static uint32_t time = 0;
 
 //! timer period
 uint32_t timer_period;
-uint32_t max_counter;
-
-uint32_t particle_data_received_count = 0;
 
 uint32_t events_processed = 0;
 uint32_t update_count = 0;
 uint32_t received_count = 0;
 uint32_t dropped_count = 0;
 
+static uint32_t event_window[EVENT_WINDOW_SIZE];
+static uint32_t start_window = 0;
+static uint32_t size_window = 0;
+
+static float L[ANG_BUCKETS];
+static float score;
+static float negativeScaler;
+
 //! parameters for this c code
+
 float x = 64.0f;
 float y = 64.0f;
 float r = 30.0f;
@@ -50,10 +57,8 @@ static uint32_t LAST_INDEX;
 
 float **proc_data, **work_data;
 
-static float L[ANG_BUCKETS];
 static circular_buffer retina_buffer;
 
-static uint32_t *qcopy;
 
 uint32_t n_particles;
 
@@ -61,7 +66,6 @@ static uint32_t packets_received = 0;
 
 float x_target;
 float y_target;
-float new_n;
 
 //! transmission key
 static uint32_t i_has_key;
@@ -123,8 +127,11 @@ static inline int float_to_int( float data){
 }
 
 //SOME FORWARD DECLARATIONS
-void performFullUpdate();
+void unload_weighted_random_particle();
+void predict(float sigma);
 void normalise();
+void calculate_likelihood();
+void load_particle_into_next_array();
 void sendstate();
 void send_roi();
 
@@ -163,7 +170,6 @@ void receive_data_payload(uint key, uint payload) {
     if(packets_received == my_turn) //perform p2p
         sendstate();
 
-
     if(packets_received == full_buffer) { //perform update
 
         computing = true;
@@ -189,33 +195,39 @@ void user_callback(uint do_p2p, uint do_calc) {
     use(do_p2p);
     use(do_calc);
 
-    proc_data[LAST_INDEX][X_IND] = x;
-    proc_data[LAST_INDEX][Y_IND] = y;
-    proc_data[LAST_INDEX][R_IND] = r;
-    proc_data[LAST_INDEX][L_IND] = l;
-    proc_data[LAST_INDEX][W_IND] = w;
-    proc_data[LAST_INDEX][N_IND] = n;
-
     normalise();
 
     static int divisor = 0;
     if(divisor++ % DIV_VALUE == 0) {
         for(uint32_t i = 0; i < n_particles; i++) {
-            log_info("[%d %d %d] L:%d/100 W:%d/100 #%d", (int)proc_data[i][X_IND], (int)proc_data[i][Y_IND],
+            uint32_t wdecimal1 = (int)(proc_data[i][W_IND]*1000)%10;
+            uint32_t wdecimal2 = (int)(proc_data[i][W_IND]*10000)%10;
+            log_info("[%d %d %d] L:%d/100 W:%d.%d%d #%d", (int)proc_data[i][X_IND], (int)proc_data[i][Y_IND],
             (int)proc_data[i][R_IND], (int)(proc_data[i][L_IND]*100), (int)(proc_data[i][W_IND]*100),
-            (int)proc_data[i][N_IND]);
+            wdecimal1, wdecimal2, (int)proc_data[i][N_IND]);
         }
         log_info("Target: [%d %d]", (int)x_target, (int)y_target);
     }
 
-    performFullUpdate();
+    unload_weighted_random_particle();
+
+    //perform prediction/observation steps
+    predict(0.1);
+
+    calculate_likelihood();
+
+    //processInput (copy list out, append to other, perform observation)
+    //l = 0.5 + (2.0 * 0.1 * (float)rand() / RAND_MAX) - 0.1;
+
+    //conclude likelihood (e.g w = w*l)
+    w = w * l;
 
     computing = false;
 
+    //do final tasks
+    load_particle_into_next_array();
     circular_buffer_clear(retina_buffer);
-
     send_roi();
-
     if(packets_received == my_turn) {
         sendstate();
     }
@@ -323,36 +335,24 @@ void resample();
 void predict(float sigma);
 void incLikelihood(float vx, float vy);
 
-void performFullUpdate()
-{
-    //normalise all the weights, get target position
-    //normalise();
-    //get average n-window
-        //clear the local buffer if too large
-    //if(new_n) > current_buffer_size - 30;
-    //  new_n - current_buffer_size
+void load_particle_into_next_array() {
 
-
-    resample();
-
-    predict(0.1);
-
-
-    //performPrediction
-
-    //processInput (copy list out, append to other, perform observation)
-    l = 0.5 + (2.0 * 0.1 * (float)rand() / RAND_MAX) - 0.1;
-    //log_info("Likelihood: %d", (int)(l * 1000));
-
-    //conclude likelihood (e.g w = w*l)
-    w = w * l;
+    work_data[LAST_INDEX][X_IND] = x;
+    work_data[LAST_INDEX][Y_IND] = y;
+    work_data[LAST_INDEX][R_IND] = r;
+    work_data[LAST_INDEX][L_IND] = l;
+    work_data[LAST_INDEX][W_IND] = w;
+    work_data[LAST_INDEX][N_IND] = n;
 
 }
 
 
 void normalise() {
 
-    x_target = 0; y_target = 0; new_n = 0;
+
+
+    x_target = 0; y_target = 0;
+    float new_n = 0;
     float total = 0;
     for(uint32_t i = 0; i < n_particles; i++) {
         total += proc_data[i][W_IND];
@@ -366,26 +366,12 @@ void normalise() {
         new_n += proc_data[i][N_IND] * proc_data[i][W_IND];
     }
 
+    if(size_window > new_n + 30)
+        size_window = new_n;
 
 }
 
-void predict(float sigma) {
-
-    //use a flat distribution?
-    x += 2.0 * sigma * (float)rand() / RAND_MAX - sigma;
-    y += 2.0 * sigma * (float)rand() / RAND_MAX - sigma;
-    r += 2.0 * sigma * (float)rand() / RAND_MAX - sigma;
-
-    if(r < 10)      r = 10;
-    if(r > 40)      r = 40;
-    if(x < -r)      x = -r;
-    if(x > 304+r)   x = 304+r;
-    if(y < -r)      y = -r;
-    if(y > 240+r)   y = 240 + r;
-
-}
-
-void resample() {
+void unload_weighted_random_particle() {
 
 
     float rn = (float)rand() / RAND_MAX;
@@ -412,63 +398,94 @@ void resample() {
 
 }
 
-void incLikelihood(float vx, float vy) {
+void predict(float sigma) {
 
-    //get the next input packet in the queue
+    //use a flat distribution?
+    x += 2.0 * sigma * (float)rand() / RAND_MAX - sigma;
+    y += 2.0 * sigma * (float)rand() / RAND_MAX - sigma;
+    r += 2.0 * sigma * (float)rand() / RAND_MAX - sigma;
 
+    if(r < 10)      r = 10;
+    if(r > 40)      r = 40;
+    if(x < -r)      x = -r;
+    if(x > 304+r)   x = 304+r;
+    if(y < -r)      y = -r;
+    if(y > 240+r)   y = 240 + r;
+
+}
+
+static inline void incremental_calculation(uint32_t vx, uint32_t vy, uint32_t count) {
 
     //update the L vector based on the event
     float dx = vx - x;
     float dy = vy - y;
 
-    float d = sqrt(dx * dx + dy * dy) - r;
-    if(d < INLIER_PAR) {
+    float sqrd = sqrt(dx * dx + dy * dy) - r;
+    if(sqrd > 1.0 + INLIER_PAR) return;
 
-        int a = 0.5 + (ANG_BUCKETS-1) * (atan2(dy, dx) + M_PI) / (2.0 * M_PI);
+    float fsqrd = sqrd > 0 ? sqrd : -sqrd;
+    int a = 0.5 + (ANG_BUCKETS-1) * (atan2(dy, dx) + M_PI) / (2.0 * M_PI);
+    float cval = 0.0;
 
-        if(d > -INLIER_PAR) {
-            //inlier event
-            if(L[a] < 1.0) {
-                L[a] = 1.0;
-                n++;
-            }
-        } else {
-            //outlier event
-            if(L[a] > 0.0) {
-                L[a] = 0;
-                n++;
+    if(fsqrd < 1.0)
+        cval = 1.0;
+    else if(fsqrd < 1.0 + INLIER_PAR)
+        cval = (1.0 + INLIER_PAR - fsqrd) / INLIER_PAR;
+
+    if(cval) {
+        float improved = cval - L[a];
+        if(improved > 0) {
+            L[a] = cval;
+            score += improved;
+            if(score >= l) {
+                l = score;
+                n = count;
             }
         }
+    } else {
+        score -= negativeScaler;
     }
 }
 
-void processInput() {
+void calculate_likelihood() {
 
-    uint32_t current_key, buffersize;
-    //float vx, vy;
-
+    //load in new data
     uint cpsr = spin1_int_disable();
-
-    buffersize = circular_buffer_size(retina_buffer);
-    //circular_buffer_clear(retina_buffer);
-    //copy data
-
-//
-    for(uint32_t i = 0; i < buffersize; i++) {
-        if(!circular_buffer_get_next(retina_buffer, &current_key))
-            log_error("Could not get key from buffer");
-        qcopy[i] = current_key;
+    uint32_t num_new_events = circular_buffer_size(retina_buffer);
+    for(uint32_t i = 0; i < num_new_events; i++) {
+        circular_buffer_get_next(retina_buffer, &event_window[start_window++]);
+        start_window %= EVENT_WINDOW_SIZE;
     }
-//
     spin1_mode_restore(cpsr);
+    events_processed += num_new_events;
 
-    for(uint32_t i = 0; i < buffersize; i++) {
-        //decodexy(qcopy[i], &vx, &vy);
-        incLikelihood(X_MASK(qcopy[i]), Y_MASK(qcopy[i]));
+    //set the new window size
+    size_window = size_window + num_new_events;
+    if(size_window > EVENT_WINDOW_SIZE) size_window = EVENT_WINDOW_SIZE;
+
+    //initialise the likelihood calculation
+    l = MIN_LIKE;
+    score = 0;
+    n = size_window;
+    for(uint32_t i = 0; i < ANG_BUCKETS; i++) {
+        L[i] = 0;
+    }
+    negativeScaler = ANG_BUCKETS / (M_PI * r * r);
+    negativeScaler *= NEGATIVE_BIAS;
+
+    //calculate the likelihood;
+    uint32_t count = 0;
+    uint32_t i = start_window;
+    while(count < size_window) {
+
+        incremental_calculation(X_MASK(event_window[i]), Y_MASK(event_window[i]), count);
+
+        //update our counters
+        if(i == 0) i = EVENT_WINDOW_SIZE;
+        i--;
+        count++;
     }
 
-
-    events_processed += buffersize;
 
 }
 
@@ -612,26 +629,11 @@ bool initialize(uint32_t *timer_period) {
     }
 
     // initialise my input_buffer for receiving packets
-
-    retina_buffer = circular_buffer_initialize(256); //int ints
+    retina_buffer = circular_buffer_initialize(256); //in ints
     if (retina_buffer == 0){
         log_info("Could not create retina buffer");
         return false;
     }
-
-    log_info("retina_buffer initialised");
-    qcopy = spin1_malloc(256 * sizeof(uint32_t)); //int bytes
-    if(qcopy == 0) {
-        log_info("could not allocate retina copy space");
-        return false;
-    }
-
-//    particle_data =
-//        (data_items_t*) spin1_malloc(n_particles * sizeof(data_items_t));
-//    if(particle_data == 0) {
-//        log_info("could not allocate particle data table");
-//        return false;
-//    }
 
     proc_data = spin1_malloc(n_particles * sizeof(float*));
     work_data = spin1_malloc(n_particles * sizeof(float*));
@@ -644,20 +646,8 @@ bool initialize(uint32_t *timer_period) {
         }
     }
 
-    // initialise my input_buffer for receiving packets
-//    particle_buffer1 = circular_buffer_initialize(2 * PACKETS_PER_PARTICLE * n_particles);
-//    particle_buffer2 = circular_buffer_initialize(2 * PACKETS_PER_PARTICLE * n_particles);
-//    if (particle_buffer1 == 0 || particle_buffer2 == 0){
-//        log_info("Could not create particle data read buffer");
-//        return false;
-//    }
-//    proc_buf = &particle_buffer1;
-//    work_buf = &particle_buffer2;
-
-    //uint32_t seed = tc[T1_COUNT];
 
     srand(p2p_my_key);
-    //log_info("Random seed: %d", p2p_my_key);
     computing = false;
 
     log_info("Initialisation successful");

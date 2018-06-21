@@ -84,7 +84,7 @@ void receive_data_payload(uint key, uint payload)
     if(i++ % 1000 == 0) {
         log_info("Received new ROI %d %d %d", X_MASK(key), Y_MASK(key), payload);
     }
-    //update_LUT(X_MASK(key), Y_MASK(key), payload);
+    update_LUT(X_MASK(key), Y_MASK(key), payload);
 
 }
 
