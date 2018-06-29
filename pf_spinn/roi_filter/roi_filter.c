@@ -81,10 +81,10 @@ void receive_data_payload(uint key, uint payload)
 {
     //here we receive the region of interest and need to set the values
     static int i = 0;
-    if(i++ % 1000 == 0) {
+    if(i++ % 30 == 0) {
         log_info("Received new ROI %d %d %d", X_MASK(key), Y_MASK(key), payload);
     }
-    update_LUT(X_MASK(key), Y_MASK(key), payload);
+    update_LUT(X_MASK(key), Y_MASK(key), payload*1.4f);
 
 }
 

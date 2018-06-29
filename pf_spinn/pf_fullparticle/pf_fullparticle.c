@@ -9,8 +9,11 @@
 #include <simulation.h>
 #include <debug.h>
 #include <circular_buffer.h>
-#include <sqrt.h>
-#include <sincos.h>
+
+#include <sqrt.h> //?
+#include <sincos.h> //?
+
+#define SPIN_RAND_MAX (uint32_t)0xFFFFFFFF
 
 #define X_MASK(x) x&0x1FF
 #define Y_MASK(y) (y>>9)&0xFF
@@ -19,101 +22,92 @@
 #define ANG_BUCKETS 64
 #define INLIER_PAR 1
 #define MIN_LIKE 0.2f
-#define SIGMA_SCALER 4.0f
+#define SIGMA 1.0f
 #define NEGATIVE_BIAS 0.2f;
 #define PACKETS_PER_PARTICLE 6
 #define DIV_VALUE 200
 #define EVENT_WINDOW_SIZE 1000
 
-//! control value, which says how many timer ticks to run for before exiting
+//! SYSTEM VARIABLES
 static uint32_t simulation_ticks = 0;
 static uint32_t infinite_run = 0;
 static uint32_t time = 0;
-
-//! timer period
-uint32_t timer_period;
-
-uint32_t events_processed = 0;
-uint32_t update_count = 0;
-uint32_t received_count = 0;
-uint32_t dropped_count = 0;
-
-static uint32_t event_window[EVENT_WINDOW_SIZE];
-static uint32_t start_window = 0;
-static uint32_t size_window = 0;
-
-static float L[ANG_BUCKETS];
-static int L_i = 0;
-static float score;
-static float negativeScaler;
-
-//! parameters for this c code
-
-float x = 64.0f;
-float y = 64.0f;
-float r = 30.0f;
-float l = MIN_LIKE;
-float w = 1.0f;
-float n = 0.0f;
-
-static uint32_t LAST_INDEX;
-
-float **proc_data, **work_data;
-
-static circular_buffer retina_buffer;
-
-
-static uint32_t n_particles;
-
-static uint32_t packets_received = 0;
-
-float x_target;
-float y_target;
-
-//! transmission key
-static uint32_t i_has_key;
-static uint32_t p2p_my_key;
-static uint32_t my_tdma_id;
-
-static bool is_main = false;
-static uint32_t filter_update_key;
-static uint32_t output_key;
-
-static bool computing = false;
-static bool okay_to_send = true; //enforce p2p only once per update
-static uint32_t full_buffer;
-static uint32_t my_turn;
-
-//! The recording flags
+static uint32_t timer_period;
 static uint32_t recording_flags = 0;
 
-//! key bases offsets
-typedef enum packet_identifiers{
-    X_IND = 0, Y_IND = 1, R_IND = 2, L_IND = 3, W_IND = 4, N_IND = 5
-}packet_identifiers;
-
-//! human readable definitions of each region in SDRAM
 typedef enum regions_e {
     SYSTEM_REGION,
     TRANSMISSION_DATA_REGION,
     CONFIG_REGION
 } regions_e;
 
-//! values for the priority for each callback
-typedef enum callback_priorities {
-    MC_PACKET = 0, MCPL_PACKET = 0, SDP_DMA = 1, TIMER = 3, USER = 3
-} callback_priorities;
-
-//! human readable definitions of each element in the transmission region
 typedef enum transmission_region_elements {
     HAS_KEY = 0, MY_KEY = 1, TDMA_ID = 2
 } transmission_region_elements;
 
-//! human readable definitions of each element in the config region
 typedef enum config_region_elements {
     X_COORD = 0, Y_COORD = 1, RADIUS = 2, PACKET_THRESHOLD = 3, IS_MAIN = 4,
     FILTER_UPDATE_KEY = 5, OUTPUT_KEY = 6, N_PARTICLES = 7
 } config_region_elements;
+
+typedef enum callback_priorities {
+    MC_PACKET = 0, MCPL_PACKET = 0, SDP_DMA = 1, TIMER = 3, USER = 3
+} callback_priorities;
+
+//! ALGORITHM VARIABLES
+static uint32_t event_window[EVENT_WINDOW_SIZE];
+static uint32_t start_window = 0;
+static uint32_t size_window = 0;
+
+static float L[ANG_BUCKETS];
+static float score;
+static float negativeScaler;
+
+static float x = 64.0f;
+static float y = 64.0f;
+static float r = 30.0f;
+static float l = MIN_LIKE;
+static float w = 1.0f;
+static float n = 0.0f;
+
+float x_target;
+float y_target;
+
+//! SENDING/RECEIVING VARIABLES
+
+static bool is_main = false;
+static uint32_t filter_update_key;
+static uint32_t output_key;
+
+static uint32_t i_has_key;
+static uint32_t p2p_my_key;
+static uint32_t my_tdma_id;
+
+static uint32_t n_particles;
+static uint32_t LAST_INDEX;
+static float **proc_data, **work_data;
+static circular_buffer retina_buffer;
+
+static uint32_t full_buffer;
+static uint32_t my_turn;
+
+typedef enum packet_identifiers{
+    X_IND = 0, Y_IND = 1, R_IND = 2, L_IND = 3, W_IND = 4, N_IND = 5
+}packet_identifiers;
+
+
+//! DEBUG VARIABLES
+static uint32_t events_processed = 0;
+static uint32_t update_count = 0;
+static uint32_t received_count = 0;
+static uint32_t dropped_count = 0;
+static uint32_t packets_received = 0;
+
+static bool packet_sending_turn = false;
+static bool finished_processing = true;
+static bool tried_to_call_my_turn = false;
+static bool tried_to_call_proc_done = false;
+
 
 //! \brief converts a int to a float via bit wise conversion
 //! \param[in] y: the int to convert
@@ -129,21 +123,11 @@ static inline int float_to_int( float data){
     return cast_union.y;
 }
 
-    static bool packet_sending_turn = false;
-    static bool finished_processing = true;
-    static bool tried_to_call_my_turn = false;
-    static bool tried_to_call_proc_done = false;
-    static bool stuck_in_likelhood = false;
+
 
 //SOME FORWARD DECLARATIONS
-void unload_weighted_random_particle();
-void predict(float sigma);
-void normalise();
-void calculate_likelihood();
-void load_particle_into_next_array();
-void sendstate(uint arg1, uint arg2);
-void send_roi();
-void user_callback(uint do_p2p, uint do_calc);
+void particle_filter_update_step(uint do_p2p, uint do_calc);
+void ready_to_send(uint proc_msg, uint pack_msg);
 
 ////////////////////////////////////////////////////////////////////////////////
 // SEND/RECEIVE
@@ -152,65 +136,33 @@ void user_callback(uint do_p2p, uint do_calc);
 //! \brief callback when packet with no payload is received (retina)
 //! \param[in] key: the key received
 //! \param[in] payload: unused. is set to 0
-void receive_data_no_payload(uint key, uint payload) {
+void receive_retina_event(uint key, uint payload) {
 
     use(payload);
 
     //this will be the events
-    if (!circular_buffer_add(retina_buffer, key)) {
-        //log_error("Could not add 1000 events");
+    if (!circular_buffer_add(retina_buffer, key))
         dropped_count++;
-    }
     received_count++;
 
 }
 
-void ready_to_send(uint proc_msg, uint pack_msg)
-{
-
-    if(proc_msg)
-        finished_processing = true;
-    if(pack_msg)
-        packet_sending_turn = true;
-
-    //log_info("getting ready to send: %d %d", packet_sending_turn, finished_processing);
-
-    if(finished_processing && packet_sending_turn) {
-        sendstate(0, 0);
-        //spin1_schedule_callback(sendstate, 0, 0, 5);
-        packet_sending_turn = false;
-        finished_processing = false;
-        tried_to_call_my_turn = false;
-        tried_to_call_proc_done = false;
-    }
-
-
-}
-
-
-
 //! \brief callback for when packet has payload (agg)
 //! \param[in] key: the key received
 //! \param[in] payload: the payload received
-void receive_data_payload(uint key, uint payload) {
+void receive_particle_data_packet(uint key, uint payload) {
 
     //load in data
     work_data[packets_received++ / PACKETS_PER_PARTICLE][key&0x7] =
         int_to_float(payload);
-    //okay_to_send = true;
 
-    //if(computing) return; //don't send anything if we haven't correctly updated
-
-    if(packets_received == my_turn) {
+    if(packets_received == my_turn) { //it is our turn to send data
         tried_to_call_my_turn = true;
         if(!spin1_schedule_callback(ready_to_send, 0, 1, 2))
-            log_info("Couldn't make ready_to_send callback!");
+            log_error("Couldn't make my_turn callback!");
     }
-        //spin1_schedule_callback(sendstate, 0, 1, 5);
 
     if(packets_received == full_buffer) { //perform update
-
-        //computing = true;
 
         float **temp = work_data;
         work_data = proc_data;
@@ -218,78 +170,13 @@ void receive_data_payload(uint key, uint payload) {
 
         packets_received = 0;
 
-        spin1_schedule_callback(user_callback, 0, 0, 3);
-        //spin1_trigger_user_event(0, 1); return 0 of failure.
+        spin1_schedule_callback(particle_filter_update_step, 0, 0, 3);
     }
-
-//    if(send || compute)
-//        spin1_trigger_user_event(send, compute);
 
 }
 
-//! \brief callback for user
-//! \param[in] random param1
-//! \param[in] random param2
-void user_callback(uint do_p2p, uint do_calc) {
-
-    use(do_p2p);
-    use(do_calc);
-
-    normalise();
-
-    static int divisor = 0;
-    if(divisor++ % DIV_VALUE == 0) {
-        for(uint32_t i = 0; i < n_particles; i++) {
-            uint32_t wdecimal1 = (int)(proc_data[i][W_IND]*1000)%10;
-            uint32_t wdecimal2 = (int)(proc_data[i][W_IND]*10000)%10;
-            log_info("[%d %d %d] L:%d/100 W:%d.%d%d #%d", (int)proc_data[i][X_IND], (int)proc_data[i][Y_IND],
-            (int)proc_data[i][R_IND], (int)(proc_data[i][L_IND]*100), (int)(proc_data[i][W_IND]*100),
-            wdecimal1, wdecimal2, (int)proc_data[i][N_IND]);
-        }
-        log_info("Target: [%d %d]", (int)x_target, (int)y_target);
-    }
-
-    unload_weighted_random_particle();
-
-    //perform prediction/observation steps
-    predict(0.1);
-
-    calculate_likelihood();
-
-    //processInput (copy list out, append to other, perform observation)
-    //l = 0.5 + (2.0 * 0.1 * (float)rand() / RAND_MAX) - 0.1;
-
-    //conclude likelihood (e.g w = w*l)
-    w = w * l;
-
-    //do final tasks
-    load_particle_into_next_array();
-
-
-    //circular_buffer_clear(retina_buffer);
-    send_roi();
-
-    tried_to_call_proc_done = true;
-    if(!spin1_schedule_callback(ready_to_send, 1, my_tdma_id == 0, 2)) {
-        log_error("Could not call proc done callback");
-    }
-
-
-
-
-    //uint cpsr = spin1_fiq_disable();
-    //spin1_mode_restore(cpsr);
-    //spin1_delay_us(100);
-
-}
-
-void sendstate(uint arg1, uint arg2) {
-    use(arg1);
-    use(arg2);
-
-    //make sure we aren't trying to send twice on the same update cycle
-    //if(!okay_to_send) return;
-    //okay_to_send = false;
+//! \brief send this particles state to the other particles
+void send_p2p() {
 
     //make sure we actually have a key
     if(!i_has_key) {
@@ -322,31 +209,51 @@ void sendstate(uint arg1, uint arg2) {
 
 }
 
+//! \brief callback to conditionally send data on to other particles
+//!         requires a call from finished processing, and also from
+//!         the correct particle order
+void ready_to_send(uint proc_msg, uint pack_msg)
+{
+
+    if(proc_msg)
+        finished_processing = true;
+    if(pack_msg)
+        packet_sending_turn = true;
+
+    if(finished_processing && packet_sending_turn) {
+        send_p2p();
+        packet_sending_turn = false;
+        finished_processing = false;
+        tried_to_call_my_turn = false;
+        tried_to_call_proc_done = false;
+    }
+
+}
+
+//! \brief send the region of interest to the filter
 void send_roi()
 {
 
+    if(!is_main)
+        return;
+
     //this will send to the filters the updated ROI
     //only if the main_particle
-
-    if(is_main) {
-        while (!spin1_send_mc_packet(filter_update_key + (XY_CODE((int)x, (int)y)),
-                    (int)r, WITH_PAYLOAD)) {
-                spin1_delay_us(1);
-        }
+    while (!spin1_send_mc_packet(filter_update_key + (XY_CODE((int)x, (int)y)),
+                (int)r, WITH_PAYLOAD)) {
+            spin1_delay_us(1);
     }
-
 
 }
 
 void send_position_out()
 {
-//    float average_x = 0, average_y = 0;
-    if(is_main) {
 
-//        for(uint32_t i = 0; i < n_particles; i++) {
-//            average_x += particle_data[i].x * particle_data[i].w;
-//            average_y += particle_data[i].y * particle_data[i].w;
-//        }
+    if(!is_main)
+        return;
+
+
+
 
         //send a message out
 //        while (!spin1_send_mc_packet(
@@ -359,18 +266,15 @@ void send_position_out()
 //            log_info("Sending output: %u %u", uint32_t(x), uint32_t(y));
 //        dropper++;
 
-    }
+
 
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // ALGORITHM FUNCTIONS
 ////////////////////////////////////////////////////////////////////////////////
-void normalise();
-void resample();
-void predict(float sigma);
-void incLikelihood(float vx, float vy);
 
+//! \brief move local particle data into particle array data
 void load_particle_into_next_array() {
 
     work_data[LAST_INDEX][X_IND] = x;
@@ -382,14 +286,14 @@ void load_particle_into_next_array() {
 
 }
 
-
+//! \brief perform weigth normalisation, calculate average target and
+//!     window size.
 void normalise() {
-
-
 
     x_target = 0; y_target = 0;
     float new_n = 0;
     float total = 0;
+
     for(uint32_t i = 0; i < n_particles; i++) {
         total += proc_data[i][W_IND];
     }
@@ -407,12 +311,10 @@ void normalise() {
 
 }
 
+//! \brief find a random particle to unload (this is the resample step)
 void unload_weighted_random_particle() {
 
-    //void  spin1_srand (uint seed);
-    //uint  spin1_rand  (void);
-
-    float rn = (float)rand() / RAND_MAX;
+    float rn = (float)spin1_rand() / SPIN_RAND_MAX;
 
     //set resampled according to distribution of weights
     float accumed_sum = 0.0;
@@ -422,10 +324,6 @@ void unload_weighted_random_particle() {
         if(accumed_sum > rn) break;
     }
     if(i == n_particles) i--;
-    static int divisor = 0;
-    if(divisor++ % DIV_VALUE == 0) {
-        log_info("Chosen Particle: %d", i);
-    }
 
     x = proc_data[i][X_IND];
     y = proc_data[i][Y_IND];
@@ -434,14 +332,19 @@ void unload_weighted_random_particle() {
     l = proc_data[i][L_IND];
     n = proc_data[i][N_IND];
 
+    static int divisor = 0;
+    if(divisor++ % DIV_VALUE == 0) {
+        log_info("Chosen Particle: %d", i);
+    }
+
 }
 
 void predict(float sigma) {
 
-    //use a flat distribution?
-    x += 2.0 * sigma * (float)rand() / RAND_MAX - sigma;
-    y += 2.0 * sigma * (float)rand() / RAND_MAX - sigma;
-    r += 2.0 * sigma * (float)rand() / RAND_MAX - sigma;
+    //TODO: should this be changed to a gaussian distribution?
+    x += 2.0 * sigma * ((float)spin1_rand() / SPIN_RAND_MAX) - sigma;
+    y += 2.0 * sigma * ((float)spin1_rand() / SPIN_RAND_MAX) - sigma;
+    r += 2.0 * sigma * ((float)spin1_rand() / SPIN_RAND_MAX) - sigma;
 
     if(r < 10)      r = 10;
     if(r > 40)      r = 40;
@@ -464,10 +367,7 @@ static inline void incremental_calculation(uint32_t vx, uint32_t vy, uint32_t co
 
     float fsqrd = sqrd > 0 ? sqrd : -sqrd;
 
-    L_i = 0.5 + (ANG_BUCKETS-1) * (atan2f(dy, dx) + M_PI) / (2.0 * M_PI);
-
-//    accum a2 = 0;
-//    accum b2 = sink(a2);
+    int L_i = 0.5 + (ANG_BUCKETS-1) * (atan2f(dy, dx) + M_PI) / (2.0 * M_PI);
     float cval = 0.0;
 
     if(fsqrd < 1.0)
@@ -494,14 +394,12 @@ void calculate_likelihood() {
 
     //load in new data
     uint cpsr = spin1_int_disable();
-    //spin1_callback_off(MC_PACKET_RECEIVED);
     uint32_t num_new_events = circular_buffer_size(retina_buffer);
     for(uint32_t i = 0; i < num_new_events; i++) {
         start_window = (start_window + 1) % EVENT_WINDOW_SIZE;
         circular_buffer_get_next(retina_buffer, &event_window[start_window]);
     }
     spin1_mode_restore(cpsr);
-    //spin1_callback_on(MC_PACKET_RECEIVED, receive_data_no_payload, MC_PACKET);
     events_processed += num_new_events;
 
     //set the new window size
@@ -518,22 +416,61 @@ void calculate_likelihood() {
     negativeScaler = (ANG_BUCKETS / (M_PI * r * r)) * NEGATIVE_BIAS;
 
     //calculate the likelihood;
-    stuck_in_likelhood = true;
     uint32_t count = 0;
     uint32_t i = start_window;
     while(count < size_window) {
 
-        incremental_calculation(X_MASK(event_window[i]), Y_MASK(event_window[i]), count);
+        //incremental_calculation(X_MASK(event_window[i]), Y_MASK(event_window[i]), count);
+        spin1_delay_us(1);
 
         //update our counters
         if(i == 0) i = EVENT_WINDOW_SIZE;
         i--;
         count++;
     }
-    stuck_in_likelhood = false;
 
     if(n < 100) n = 100;
+    w = w * l;
 
+}
+
+void particle_filter_update_step(uint do_p2p, uint do_calc) {
+
+    use(do_p2p);
+    use(do_calc);
+
+    normalise();
+
+    static int divisor = 0;
+    if(divisor++ % DIV_VALUE == 0) {
+        for(uint32_t i = 0; i < n_particles; i++) {
+            uint32_t wdecimal1 = (int)(proc_data[i][W_IND]*1000)%10;
+            uint32_t wdecimal2 = (int)(proc_data[i][W_IND]*10000)%10;
+            log_info("[%d %d %d] L:%d W:%d.%d%d #%d", (int)proc_data[i][X_IND], (int)proc_data[i][Y_IND],
+            (int)proc_data[i][R_IND], (int)(proc_data[i][L_IND]), (int)(proc_data[i][W_IND]*100),
+            wdecimal1, wdecimal2, (int)proc_data[i][N_IND]);
+        }
+        log_info("Target: [%d %d]", (int)x_target, (int)y_target);
+    }
+
+    unload_weighted_random_particle();
+    predict(SIGMA);
+    calculate_likelihood();
+
+
+    //do final tasks
+    send_roi();
+    send_position_out();
+    load_particle_into_next_array();
+
+    tried_to_call_proc_done = true;
+    if(!spin1_schedule_callback(ready_to_send, 1, my_tdma_id == 0, 2)) {
+        log_error("Could not call proc done callback");
+    }
+
+    //uint cpsr = spin1_fiq_disable();
+    //spin1_mode_restore(cpsr);
+    //spin1_delay_us(100);
 
 }
 
@@ -588,10 +525,6 @@ void update(uint ticks, uint b) {
         dropped_count = 0;
 
         log_info("%d %d (%d %d)", finished_processing, packet_sending_turn, tried_to_call_proc_done, tried_to_call_my_turn);
-        if(stuck_in_likelhood)
-            log_info("[STUCK] Angle Bucket: %d", L_i);
-        else
-            log_info("Angle Bucket: %d", L_i);
     }
 
     if(time == 0 && my_tdma_id == 0) {
@@ -607,9 +540,7 @@ void update(uint ticks, uint b) {
 //! \param[in] address: dsg address in sdram memory space
 //! \return bool which is successful if read correctly, false otherwise
 bool read_config(address_t address){
-//    uint32_t xtemp = address[X_COORD];
-//    uint32_t ytemp = address[Y_COORD];
-//    uint32_t rtemp = address[RADIUS];
+
     x = address[X_COORD];
     y = address[Y_COORD];
     r = address[RADIUS];
@@ -704,8 +635,7 @@ bool initialize(uint32_t *timer_period) {
 
     load_particle_into_next_array();
 
-    srand(p2p_my_key);
-    computing = false;
+    spin1_srand (p2p_my_key);
 
     log_info("Initialisation successful");
 
@@ -729,10 +659,10 @@ void c_main() {
     spin1_set_timer_tick(timer_period);
 
     // register callbacks
-    spin1_callback_on(MCPL_PACKET_RECEIVED, receive_data_payload, MCPL_PACKET);
-    spin1_callback_on(MC_PACKET_RECEIVED, receive_data_no_payload, MC_PACKET);
+    spin1_callback_on(MCPL_PACKET_RECEIVED, receive_particle_data_packet, MCPL_PACKET);
+    spin1_callback_on(MC_PACKET_RECEIVED, receive_retina_event, MC_PACKET);
     spin1_callback_on(TIMER_TICK, update, TIMER);
-    spin1_callback_on(USER_EVENT, sendstate, USER);
+    //spin1_callback_on(USER_EVENT, sendstate, USER);
 
     // start execution
     log_info("Starting\n");
