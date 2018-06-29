@@ -42,16 +42,16 @@ typedef enum regions_e {
 } regions_e;
 
 typedef enum transmission_region_elements {
-    HAS_KEY = 0, MY_KEY = 1, TDMA_ID = 2
+    HAS_KEY = 0, P2P_KEY = 1, FILTER_UPDATE_KEY = 2, OUTPUT_KEY = 3
 } transmission_region_elements;
 
 typedef enum config_region_elements {
-    X_COORD = 0, Y_COORD = 1, RADIUS = 2, PACKET_THRESHOLD = 3, IS_MAIN = 4,
-    FILTER_UPDATE_KEY = 5, OUTPUT_KEY = 6, N_PARTICLES = 7
+    X_COORD = 0, Y_COORD = 1, RADIUS = 2, P2P_ID = 3, IS_MAIN = 4,
+    N_PARTICLES = 5
 } config_region_elements;
 
 typedef enum callback_priorities {
-    MC_PACKET = 0, MCPL_PACKET = 0, SDP_DMA = 1, TIMER = 3, USER = 3
+    PACKET = 0, SDP_DMA = 1, SEND = 2, FILTER_UPDATE = 3, TIMER = 3,
 } callback_priorities;
 
 //! ALGORITHM VARIABLES
@@ -81,10 +81,10 @@ static uint32_t output_key;
 
 static uint32_t i_has_key;
 static uint32_t p2p_my_key;
-static uint32_t my_tdma_id;
+static uint32_t my_p2p_id;
 
 static uint32_t n_particles;
-static uint32_t LAST_INDEX;
+static uint32_t last_index;
 static float **proc_data, **work_data;
 static circular_buffer retina_buffer;
 
@@ -158,7 +158,7 @@ void receive_particle_data_packet(uint key, uint payload) {
 
     if(packets_received == my_turn) { //it is our turn to send data
         tried_to_call_my_turn = true;
-        if(!spin1_schedule_callback(ready_to_send, 0, 1, 2))
+        if(!spin1_schedule_callback(ready_to_send, 0, 1, SEND))
             log_error("Couldn't make my_turn callback!");
     }
 
@@ -170,7 +170,7 @@ void receive_particle_data_packet(uint key, uint payload) {
 
         packets_received = 0;
 
-        spin1_schedule_callback(particle_filter_update_step, 0, 0, 3);
+        spin1_schedule_callback(particle_filter_update_step, 0, 0, FILTER_UPDATE);
     }
 
 }
@@ -277,12 +277,12 @@ void send_position_out()
 //! \brief move local particle data into particle array data
 void load_particle_into_next_array() {
 
-    work_data[LAST_INDEX][X_IND] = x;
-    work_data[LAST_INDEX][Y_IND] = y;
-    work_data[LAST_INDEX][R_IND] = r;
-    work_data[LAST_INDEX][L_IND] = l;
-    work_data[LAST_INDEX][W_IND] = w;
-    work_data[LAST_INDEX][N_IND] = n;
+    work_data[last_index][X_IND] = x;
+    work_data[last_index][Y_IND] = y;
+    work_data[last_index][R_IND] = r;
+    work_data[last_index][L_IND] = l;
+    work_data[last_index][W_IND] = w;
+    work_data[last_index][N_IND] = n;
 
 }
 
@@ -464,7 +464,7 @@ void particle_filter_update_step(uint do_p2p, uint do_calc) {
     load_particle_into_next_array();
 
     tried_to_call_proc_done = true;
-    if(!spin1_schedule_callback(ready_to_send, 1, my_tdma_id == 0, 2)) {
+    if(!spin1_schedule_callback(ready_to_send, 1, my_p2p_id == 0, SEND)) {
         log_error("Could not call proc done callback");
     }
 
@@ -527,7 +527,7 @@ void update(uint ticks, uint b) {
         log_info("%d %d (%d %d)", finished_processing, packet_sending_turn, tried_to_call_proc_done, tried_to_call_my_turn);
     }
 
-    if(time == 0 && my_tdma_id == 0) {
+    if(time == 0 && my_p2p_id == 0) {
         //sendstate();
         //spin1_trigger_user_event(0, 1);
         spin1_schedule_callback(ready_to_send, 0, 1, 4);
@@ -541,28 +541,26 @@ void update(uint ticks, uint b) {
 //! \return bool which is successful if read correctly, false otherwise
 bool read_config(address_t address){
 
+    //read data
+    my_p2p_id = address[P2P_ID];
+    n_particles = address[N_PARTICLES];
+    if (address[IS_MAIN]) is_main = true;
+
     x = address[X_COORD];
     y = address[Y_COORD];
     r = address[RADIUS];
-    log_info("x, y, r: %u, %u, %u", (uint32_t)x, (uint32_t)y, (uint32_t)r);
-    n = address[PACKET_THRESHOLD];
-    log_info("packet_threshold: %d", n);
-    if (address[IS_MAIN] == 0){
-        is_main = true;
-        filter_update_key = address[FILTER_UPDATE_KEY];
-        output_key = address[OUTPUT_KEY];
-        log_info("Main Particle: 0x%08x 0x%08x", filter_update_key, output_key);
-    }
-    else{
-        log_info("non-main particle");
-        is_main = false;
-        filter_update_key = 0;
-        output_key = 0;
-    }
-    n_particles = address[N_PARTICLES];
-    LAST_INDEX = n_particles - 1;
+
+    //compute some constants
+    my_turn = PACKETS_PER_PARTICLE * my_p2p_id;
+    last_index = n_particles - 1;
     full_buffer = PACKETS_PER_PARTICLE * (n_particles-1);
-    log_info("n_particles: %d", n_particles);
+
+    //print some info
+    log_info("\n==Particle Information==");
+    if(is_main) log_info("Main Particle");
+    log_info("ID: %d / %d, (my_turn: %d)", my_p2p_id, n_particles, my_turn);
+    log_info("x, y, r: %u, %u, %u", (uint32_t)x, (uint32_t)y, (uint32_t)r);
+
     return true;
 }
 
@@ -571,11 +569,9 @@ bool read_config(address_t address){
 //! \return bool which is successful if read correctly, false otherwise
 bool read_transmission_keys(address_t address){
     i_has_key = address[HAS_KEY];
-    p2p_my_key = address[MY_KEY];
-    my_tdma_id = address[TDMA_ID];
-
-    my_turn = PACKETS_PER_PARTICLE * my_tdma_id;
-    log_info("ID: %d, my_turn: %d", my_tdma_id, my_turn);
+    p2p_my_key = address[P2P_KEY];
+    filter_update_key = address[FILTER_UPDATE_KEY];
+    output_key = address[OUTPUT_KEY];
 
     return true;
 }
@@ -659,8 +655,8 @@ void c_main() {
     spin1_set_timer_tick(timer_period);
 
     // register callbacks
-    spin1_callback_on(MCPL_PACKET_RECEIVED, receive_particle_data_packet, MCPL_PACKET);
-    spin1_callback_on(MC_PACKET_RECEIVED, receive_retina_event, MC_PACKET);
+    spin1_callback_on(MCPL_PACKET_RECEIVED, receive_particle_data_packet, PACKET);
+    spin1_callback_on(MC_PACKET_RECEIVED, receive_retina_event, PACKET);
     spin1_callback_on(TIMER_TICK, update, TIMER);
     //spin1_callback_on(USER_EVENT, sendstate, USER);
 

@@ -40,8 +40,8 @@ class PfFullParticleVertex(
                ('TRANSMISSION_DATA', 1),
                ('CONFIG', 2)])
 
-    TRANSMISSION_DATA_SIZE = 12
-    CONFIG_PARAM_SIZE = 32
+    TRANSMISSION_DATA_SIZE = 16
+    CONFIG_PARAM_SIZE = 24
 
     KEYS_REQUIRED = 6
 
@@ -109,6 +109,9 @@ class PfFullParticleVertex(
             self, spec, placement, machine_graph, routing_info, iptags,
             reverse_iptags, machine_time_step, time_scale_factor):
 
+        #    HAS_KEY = 0, P2P_KEY = 1, FILTER_UPDATE_KEY = 2, OUTPUT_KEY = 3
+        #    X_COORD = 0, Y_COORD = 1, RADIUS = 2, P2P_ID = 3, IS_MAIN = 4, N_PARTICLES = 5
+
         self._placement = placement
 
         # Setup words + 1 for flags + 1 for recording size
@@ -130,37 +133,35 @@ class PfFullParticleVertex(
             self, app_constants.EDGE_PARTITION_PARTICLE_TO_PARTICLE)
         if routing_key is None:
             raise Exception("Error: the routing key is none!")
-        if routing_key is None:
-            spec.write_value(0)
-            spec.write_value(0)
-            spec.write_value(0)
         else:
+            #HAS_KEY
             spec.write_value(1)
-            spec.write_value(routing_key)
-            spec.write_value(self._id)
+            #P2P_KEY
+            spec.write_value(routing_info.get_first_key_from_pre_vertex(
+                self, app_constants.EDGE_PARTITION_PARTICLE_TO_PARTICLE))
+        if self._main:
+            #FILTER_UPDATE_KEY
+            spec.write_value(routing_info.get_first_key_from_pre_vertex(
+                self, app_constants.EDGE_PARTITION_MAIN_TO_FILTER))
+            #OUTPUT_KEY
+            spec.write_value(routing_info.get_first_key_from_pre_vertex(
+                self, app_constants.EDGE_PARTITION_TARGET_POSITION))
+        else:
+            spec.write_value(0)
+            spec.write_value(0)
+
+
 
         # write config params
         spec.switch_write_focus(self.DATA_REGIONS.CONFIG.value)
         spec.write_value(self._x)
         spec.write_value(self._y)
         spec.write_value(self._r)
-        #print("Initial Particle State {} {} {}".format(self._x, self._y, self._r))
-        spec.write_value(self._packet_threshold)
+        spec.write_value(self._id)
         if self._main:
-            spec.write_value(0)
-            # partile to filters
-            routing_key = routing_info.get_first_key_from_pre_vertex(
-                self, app_constants.EDGE_PARTITION_MAIN_TO_FILTER)
-            spec.write_value(routing_key)
-            # paritle to output
-            routing_key = routing_info.get_first_key_from_pre_vertex(
-                self, app_constants.EDGE_PARTITION_TARGET_POSITION)
-            spec.write_value(routing_key)
+            spec.write_value(1)
         else:
-            spec.write_value(1)
-            spec.write_value(1)
-            spec.write_value(1)
-
+            spec.write_value(0)
         spec.write_value(self._n_particles)
 
         # End-of-Spec:
