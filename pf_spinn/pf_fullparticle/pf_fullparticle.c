@@ -28,6 +28,10 @@
 #define DIV_VALUE 200
 #define EVENT_WINDOW_SIZE 1000
 
+#define CONSTANT1 (ANG_BUCKETS - 1) / (M_PI * 2.0)
+#define INV_INLIER_PAR 1.0/INLIER_PAR
+
+
 //! SYSTEM VARIABLES
 static uint32_t simulation_ticks = 0;
 static uint32_t infinite_run = 0;
@@ -62,6 +66,7 @@ static uint32_t size_window = 0;
 static float L[ANG_BUCKETS];
 static float score;
 static float negativeScaler;
+
 
 static float x = 64.0f;
 static float y = 64.0f;
@@ -240,7 +245,7 @@ void send_roi()
     //this will send to the filters the updated ROI
     //only if the main_particle
     while (!spin1_send_mc_packet(filter_update_key + (XY_CODE((int)x, (int)y)),
-                (int)r, WITH_PAYLOAD)) {
+                (int)(r*1.4f), WITH_PAYLOAD)) {
             spin1_delay_us(1);
     }
 
@@ -332,10 +337,10 @@ void unload_weighted_random_particle() {
     l = proc_data[i][L_IND];
     n = proc_data[i][N_IND];
 
-    static int divisor = 0;
-    if(divisor++ % DIV_VALUE == 0) {
-        log_info("Chosen Particle: %d", i);
-    }
+//    static int divisor = 0;
+//    if(divisor++ % DIV_VALUE == 0) {
+//        log_info("Chosen Particle: %d", i);
+//    }
 
 }
 
@@ -367,13 +372,13 @@ static inline void incremental_calculation(uint32_t vx, uint32_t vy, uint32_t co
 
     float fsqrd = sqrd > 0 ? sqrd : -sqrd;
 
-    int L_i = 0.5 + (ANG_BUCKETS-1) * (atan2f(dy, dx) + M_PI) / (2.0 * M_PI);
+    int L_i = 0.5 + (CONSTANT1 * (atan2f(dy, dx) + M_PI));
     float cval = 0.0;
 
     if(fsqrd < 1.0)
         cval = 1.0;
     else if(fsqrd < 1.0 + INLIER_PAR)
-        cval = (1.0 + INLIER_PAR - fsqrd) / INLIER_PAR;
+        cval = (1.0 + INLIER_PAR - fsqrd) * INV_INLIER_PAR;
 
     if(cval > 0.0) {
         float improved = cval - L[L_i];
@@ -420,8 +425,8 @@ void calculate_likelihood() {
     uint32_t i = start_window;
     while(count < size_window) {
 
-        //incremental_calculation(X_MASK(event_window[i]), Y_MASK(event_window[i]), count);
-        spin1_delay_us(1);
+        incremental_calculation(X_MASK(event_window[i]), Y_MASK(event_window[i]), count);
+        //spin1_delay_us(1);
 
         //update our counters
         if(i == 0) i = EVENT_WINDOW_SIZE;
@@ -441,17 +446,17 @@ void particle_filter_update_step(uint do_p2p, uint do_calc) {
 
     normalise();
 
-    static int divisor = 0;
-    if(divisor++ % DIV_VALUE == 0) {
-        for(uint32_t i = 0; i < n_particles; i++) {
-            uint32_t wdecimal1 = (int)(proc_data[i][W_IND]*1000)%10;
-            uint32_t wdecimal2 = (int)(proc_data[i][W_IND]*10000)%10;
-            log_info("[%d %d %d] L:%d W:%d.%d%d #%d", (int)proc_data[i][X_IND], (int)proc_data[i][Y_IND],
-            (int)proc_data[i][R_IND], (int)(proc_data[i][L_IND]), (int)(proc_data[i][W_IND]*100),
-            wdecimal1, wdecimal2, (int)proc_data[i][N_IND]);
-        }
-        log_info("Target: [%d %d]", (int)x_target, (int)y_target);
-    }
+//    static int divisor = 0;
+//    if(divisor++ % DIV_VALUE == 0) {
+//        for(uint32_t i = 0; i < n_particles; i++) {
+//            uint32_t wdecimal1 = (int)(proc_data[i][W_IND]*1000)%10;
+//            uint32_t wdecimal2 = (int)(proc_data[i][W_IND]*10000)%10;
+//            log_info("[%d %d %d] L:%d W:%d.%d%d #%d", (int)proc_data[i][X_IND], (int)proc_data[i][Y_IND],
+//            (int)proc_data[i][R_IND], (int)(proc_data[i][L_IND]), (int)(proc_data[i][W_IND]*100),
+//            wdecimal1, wdecimal2, (int)proc_data[i][N_IND]);
+//        }
+//        log_info("Target: [%d %d]", (int)x_target, (int)y_target);
+//    }
 
     unload_weighted_random_particle();
     predict(SIGMA);
@@ -518,19 +523,19 @@ void update(uint ticks, uint b) {
         log_info("Update Rate = %d Hz | # EventProcessed = %d Hz | "
             "Events Received = %d Hz  | Dropped: %d Hz",
             update_count, events_processed, received_count, dropped_count);
-        log_info("Received Particle Messages: %d", packets_received);
+        //log_info("Received Particle Messages: %d", packets_received);
         update_count = 0;
         events_processed = 0;
         received_count = 0;
         dropped_count = 0;
 
-        log_info("%d %d (%d %d)", finished_processing, packet_sending_turn, tried_to_call_proc_done, tried_to_call_my_turn);
+        //log_info("%d %d (%d %d)", finished_processing, packet_sending_turn, tried_to_call_proc_done, tried_to_call_my_turn);
     }
 
     if(time == 0 && my_p2p_id == 0) {
         //sendstate();
         //spin1_trigger_user_event(0, 1);
-        spin1_schedule_callback(ready_to_send, 0, 1, 4);
+        spin1_schedule_callback(ready_to_send, 0, 1, SEND);
     }
 
 
