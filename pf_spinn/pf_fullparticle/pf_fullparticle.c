@@ -10,10 +10,21 @@
 #include <debug.h>
 #include <circular_buffer.h>
 
-#include <sqrt.h> //?
-#include <sincos.h> //?
+#define TYPE_SELECT 1 //0-fixed, 1-float
+#if TYPE_SELECT == 0
 
-#define SPIN_RAND_MAX (uint32_t)0xFFFFFFFF
+#define CALC_TYPE accum
+#define SUFFIX k
+#include <stdfix.h>
+
+#elif TYPE_SELECT == 1
+
+#define CALC_TYPE float
+#define SUFFIX f
+
+#endif
+
+#define SPIN_RAND_MAX UINT32_MAX
 
 #define X_MASK(x) x&0x1FF
 #define Y_MASK(y) (y>>9)&0xFF
@@ -26,7 +37,7 @@
 #define NEGATIVE_BIAS 0.2f;
 #define PACKETS_PER_PARTICLE 6
 #define DIV_VALUE 200
-#define EVENT_WINDOW_SIZE 1000
+#define EVENT_WINDOW_SIZE 200
 
 #define CONSTANT1 (ANG_BUCKETS - 1) / (M_PI * 2.0)
 #define INV_INLIER_PAR 1.0/INLIER_PAR
@@ -42,7 +53,8 @@ static uint32_t recording_flags = 0;
 typedef enum regions_e {
     SYSTEM_REGION,
     TRANSMISSION_DATA_REGION,
-    CONFIG_REGION
+    CONFIG_REGION,
+    RECORDING
 } regions_e;
 
 typedef enum transmission_region_elements {
@@ -75,8 +87,7 @@ static float l = MIN_LIKE;
 static float w = 1.0f;
 static float n = 0.0f;
 
-float x_target;
-float y_target;
+static float target[3];
 
 //! SENDING/RECEIVING VARIABLES
 
@@ -295,7 +306,7 @@ void load_particle_into_next_array() {
 //!     window size.
 void normalise() {
 
-    x_target = 0; y_target = 0;
+    target[0] = 0; target[1] = 0; target[2] = 0;
     float new_n = 0;
     float total = 0;
 
@@ -306,8 +317,9 @@ void normalise() {
 
     for(uint32_t i = 0; i < n_particles; i++) {
         proc_data[i][W_IND] *= total;
-        x_target += proc_data[i][X_IND] * proc_data[i][W_IND];
-        y_target += proc_data[i][Y_IND] * proc_data[i][W_IND];
+        target[0] += proc_data[i][X_IND] * proc_data[i][W_IND];
+        target[1] += proc_data[i][Y_IND] * proc_data[i][W_IND];
+        target[2] += proc_data[i][R_IND] * proc_data[i][W_IND];
         new_n += proc_data[i][N_IND] * proc_data[i][W_IND];
     }
 
@@ -505,6 +517,7 @@ void update(uint ticks, uint b) {
         log_info("Simulation complete.\n");
 
         if (recording_flags > 0) {
+            recording_finalise();
             log_info("updating recording regions");
         }
 
@@ -514,6 +527,9 @@ void update(uint ticks, uint b) {
         return;
 
     }
+
+    if (recording_flags > 0)
+        recording_record(0, target, sizeof(target));
 
     if(time == 0) {
         log_info("my key = %d", p2p_my_key);
@@ -615,6 +631,20 @@ bool initialize(uint32_t *timer_period) {
             TRANSMISSION_DATA_REGION, address))){
         return false;
     }
+
+    // Setup recording
+    if(is_main) {
+        if (!recording_initialize(
+            data_specification_get_region(RECORDING, address),
+            &recording_flags)) {
+                rt_error(RTE_SWERR);
+        }
+        log_info("Recording Flags: 0x%08x", recording_flags);
+    }
+
+
+//    int test_position[3] = {152, 120, 40};
+//    recording_record(0, test_position, sizeof(test_position));
 
     // initialise my input_buffer for receiving packets
     retina_buffer = circular_buffer_initialize(512); //in ints

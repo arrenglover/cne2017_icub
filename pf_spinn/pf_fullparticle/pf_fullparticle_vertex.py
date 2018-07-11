@@ -14,15 +14,20 @@ from spinn_front_end_common.abstract_models.impl.machine_data_specable_vertex \
     import MachineDataSpecableVertex
 from spinn_front_end_common.abstract_models.abstract_has_associated_binary \
     import AbstractHasAssociatedBinary
+from spinn_front_end_common.interface.buffer_management.buffer_models\
+    .abstract_receive_buffers_to_host import AbstractReceiveBuffersToHost
 from spinn_front_end_common.utilities.utility_objs import ExecutableType
-
+from spinn_front_end_common.utilities import helpful_functions
 from spinn_front_end_common.abstract_models.\
     abstract_provides_n_keys_for_partition import \
     AbstractProvidesNKeysForPartition
+from spinn_front_end_common.interface.buffer_management \
+    import recording_utilities
 
 
 from pf_spinn import constants as app_constants
 
+import numpy
 from enum import Enum
 import logging
 
@@ -32,20 +37,23 @@ logger = logging.getLogger(__name__)
 class PfFullParticleVertex(
         MachineVertex, MachineDataSpecableVertex, AbstractHasAssociatedBinary,
         AbstractProvidesOutgoingPartitionConstraints,
+        AbstractReceiveBuffersToHost,
         AbstractProvidesNKeysForPartition):
 
     DATA_REGIONS = Enum(
         value="DATA_REGIONS",
         names=[('SYSTEM', 0),
                ('TRANSMISSION_DATA', 1),
-               ('CONFIG', 2)])
+               ('CONFIG', 2),
+               ('RECORDING', 3)])
 
     TRANSMISSION_DATA_SIZE = 16
     CONFIG_PARAM_SIZE = 24
+    RECORD_BYTES_PER_STEP = 12
 
     KEYS_REQUIRED = 6
 
-    def __init__(self, x, y, r, packet_threshold, n_particles, label, id,
+    def __init__(self, x, y, r, packet_threshold, n_particles, label, part_id,
                  main_particle, constraints=None):
         MachineVertex.__init__(self, label=label, constraints=constraints)
 
@@ -57,7 +65,7 @@ class PfFullParticleVertex(
         self._n_particles = n_particles
         self._packet_threshold = packet_threshold
         self._placement = None
-        self._id = id
+        self._part_id = part_id
         self._main = main_particle
 
     @property
@@ -66,9 +74,18 @@ class PfFullParticleVertex(
         sdram_required = (
             constants.SYSTEM_BYTES_REQUIREMENT +
             self.TRANSMISSION_DATA_SIZE + self.CONFIG_PARAM_SIZE)
+
+        sdram_required += \
+            app_constants.MACHINE_STEPS * self.RECORD_BYTES_PER_STEP
+
         resources = ResourceContainer(
             cpu_cycles=CPUCyclesPerTickResource(45),
             dtcm=DTCMResource(100), sdram=SDRAMResource(sdram_required))
+
+        # resources.extend(recording_utilities.get_recording_resources(
+        #     [app_constants.MACHINE_STEPS * self.RECORD_BYTES_PER_STEP],
+        #     self._receive_buffer_host, self._receive_buffer_port))
+
         return resources
 
     @overrides(AbstractHasAssociatedBinary.get_binary_file_name)
@@ -84,7 +101,7 @@ class PfFullParticleVertex(
         if partition.identifier == app_constants.EDGE_PARTITION_PARTICLE_TO_PARTICLE:
             return self.KEYS_REQUIRED
         else:
-            return 0 #shouldn't be used if mask/key is used instead
+            return 0  # shouldn't be used if mask/key is used instead
 
     @overrides(AbstractProvidesOutgoingPartitionConstraints.
                get_outgoing_partition_constraints)
@@ -157,12 +174,17 @@ class PfFullParticleVertex(
         spec.write_value(self._x)
         spec.write_value(self._y)
         spec.write_value(self._r)
-        spec.write_value(self._id)
+        spec.write_value(self._part_id)
         if self._main:
             spec.write_value(1)
         else:
             spec.write_value(0)
         spec.write_value(self._n_particles)
+
+        #initialise recording region
+        spec.switch_write_focus(self.DATA_REGIONS.RECORDING.value)
+        spec.write_array(recording_utilities.get_recording_header_array(
+            [app_constants.MACHINE_STEPS * self.RECORD_BYTES_PER_STEP]))
 
         # End-of-Spec:
         spec.end_specification()
@@ -179,3 +201,40 @@ class PfFullParticleVertex(
             region=self.DATA_REGIONS.CONFIG.value,
             size=self.CONFIG_PARAM_SIZE,
             label="Config x, y, r")
+        spec.reserve_memory_region(
+            region=self.DATA_REGIONS.RECORDING.value,
+            size=recording_utilities.get_recording_header_size(1),
+            label="Recording Region")
+
+    def get_data(self, buffer_manager, placement):
+        """ Read back the samples
+        """
+
+        # Read the data recorded
+        data_values, _ = buffer_manager.get_data_for_vertex(placement, 0)
+        converted = data_values.read_all()
+        data_shape = list()
+        data_shape.append(("x", numpy.float32))
+        data_shape.append(("y", numpy.float32))
+        data_shape.append(("r", numpy.float32))
+
+        data_view = numpy.array(converted, dtype=numpy.uint8).view(data_shape)
+
+        return data_view
+
+
+    def get_minimum_buffer_sdram_usage(self):
+        return self._string_data_size
+
+    def get_n_timesteps_in_buffer_space(self, buffer_space, machine_time_step):
+        return recording_utilities.get_n_timesteps_in_buffer_space(
+            buffer_space,
+            [app_constants.MACHINE_STEPS * self.RECORD_BYTES_PER_STEP])
+
+    def get_recorded_region_ids(self):
+        return [0]
+
+    def get_recording_region_base_address(self, txrx, placement):
+        return helpful_functions.locate_memory_region_for_placement(
+            placement, self.DATA_REGIONS.RECORDING.value, txrx)
+
