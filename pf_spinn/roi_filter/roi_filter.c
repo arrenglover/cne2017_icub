@@ -22,7 +22,8 @@ static uint32_t received_count = 0;
 static uint32_t events_processed = 0;
 
 //! timer period
-uint32_t timer_period;
+static uint32_t timer_period;
+static uint32_t log_counter = 0;
 
 //! parameters for this c code
 uint32_t example_key;
@@ -80,10 +81,10 @@ void update_LUT(int x, int y, int r) {
 void receive_data_payload(uint key, uint payload)
 {
     //here we receive the region of interest and need to set the values
-    static int i = 0;
-    if(i++ % 30 == 0) {
-        log_info("Received new ROI %d %d %d", X_MASK(key), Y_MASK(key), payload);
-    }
+    //static int i = 0;
+//    if(i++ % 30 == 0) {
+//        log_info("Received new ROI %d %d %d", X_MASK(key), Y_MASK(key), payload);
+//    }
     update_LUT(X_MASK(key), Y_MASK(key), payload);
 
 }
@@ -137,7 +138,8 @@ void update(uint ticks, uint b) {
 
     }
 
-    if(time % 1000 == 0) {
+    if(time*timer_period  >= log_counter) {
+        log_counter += 1000000;
         log_info("Received = %d | Processed = %d | Period 1s | 0x%08x | 0x%08x",
             received_count, events_processed, example_key, base_key);
         events_processed = 0;

@@ -37,7 +37,7 @@
 #define NEGATIVE_BIAS 0.2f;
 #define PACKETS_PER_PARTICLE 6
 #define DIV_VALUE 200
-#define EVENT_WINDOW_SIZE 200
+#define EVENT_WINDOW_SIZE 500
 
 #define CONSTANT1 (ANG_BUCKETS - 1) / (M_PI * 2.0)
 #define INV_INLIER_PAR 1.0/INLIER_PAR
@@ -48,6 +48,7 @@ static uint32_t simulation_ticks = 0;
 static uint32_t infinite_run = 0;
 static uint32_t time = 0;
 static uint32_t timer_period;
+static uint32_t log_counter = 0;
 static uint32_t recording_flags = 0;
 
 typedef enum regions_e {
@@ -535,7 +536,8 @@ void update(uint ticks, uint b) {
         log_info("my key = %d", p2p_my_key);
     }
 
-    if(time % 1000 == 999) {
+    if(time*timer_period >= log_counter) {
+        log_counter += 1000000;
         log_info("Update Rate = %d Hz | # EventProcessed = %d Hz | "
             "Events Received = %d Hz  | Dropped: %d Hz",
             update_count, events_processed, received_count, dropped_count);
@@ -666,7 +668,7 @@ bool initialize(uint32_t *timer_period) {
 
     load_particle_into_next_array();
 
-    spin1_srand (p2p_my_key);
+    //spin1_srand (p2p_my_key);
 
     log_info("Initialisation successful");
 

@@ -27,7 +27,7 @@ def load_spike_train(filename):
     return spike_train
 
 
-def load_vbottle(filename, window_size=0, tsscaler=0.000000080, address_bits = 20, max_stamp = 0x00FFFFFF):
+def load_vbottle(filename, window_size=100, tsscaler=0.000000080, address_bits = 20, max_stamp = 0x00FFFFFF, height=240, width=304):
 
     try:
         file = open(filename, "r")
@@ -36,7 +36,8 @@ def load_vbottle(filename, window_size=0, tsscaler=0.000000080, address_bits = 2
         return -1
 
     #timestamp wraps
-    tsscaler *= 1000;
+    tsscaler *= 1000
+    ftime_ms = 0
     base_ts = -1
     wrap_ts = 0
     pts = 0
@@ -47,6 +48,7 @@ def load_vbottle(filename, window_size=0, tsscaler=0.000000080, address_bits = 2
 
     #convert dataset to event-windows
     video_sequence = []
+    video_sequence.append(np.ones((height, width), dtype=np.uint8)*255)
 
     for line in file:
         #print line
@@ -69,7 +71,15 @@ def load_vbottle(filename, window_size=0, tsscaler=0.000000080, address_bits = 2
                 pts = timestamps[i]
                 wrap_ts += max_stamp
 
-            spike_train[address[i]].append(int((timestamps[i] + wrap_ts - base_ts) * tsscaler)+0.5)
+            ctime_ms = int((timestamps[i] + wrap_ts - base_ts) * tsscaler)+0.5
+
+            spike_train[address[i]].append(ctime_ms)
+
+            if(ctime_ms > ftime_ms + window_size) :
+                video_sequence.append(np.ones((height, width), dtype=np.uint8) * 255)
+                ftime_ms += window_size
+            video_sequence[-1][Y[i]][X[i]] = 0
 
 
-    return spike_train
+
+    return spike_train, video_sequence

@@ -21,7 +21,10 @@ from pf_spinn.ICUB_input_vertex.ICUB_input_vertex import ICUBInputVertex
 from pf_spinn.ICUB_output_vertex.ICUB_output_vertex import ICUBOutputVertex
 from pf_spinn.pf_fullparticle.pf_fullparticle_vertex import PfFullParticleVertex
 from pf_spinn.roi_filter.roi_filter_vertex import RetinaFilter
+from process_and_plot import processAndPlot
+from read_dataset import load_vbottle
 from read_dataset import load_spike_train
+
 from spinn_front_end_common.utility_models. \
     reverse_ip_tag_multicast_source_machine_vertex import \
     ReverseIPTagMulticastSourceMachineVertex
@@ -29,18 +32,22 @@ from spinn_front_end_common.utility_models. \
 # logger!
 logger = logging.getLogger(__name__)
 
-# get machine and setup backend
-n_chips_required = 4
-front_end.setup(n_chips_required=n_chips_required,
-                model_binary_module=binaries)
-
 # state variables
 use_spinn_link = False
-filename = "data.log.spiking.txt"
+filename = "/home/aglover/workspace/datasets/spinnaker_tracking/1/ATIS/data.log"
+#filename = "data.log.spiking.txt"
 machine_time_step = constants.US_PER_STEP #us
 operation_time = constants.US_PER_STEP * constants.MACHINE_STEPS / 1000 #ms
 time_scale_factor = 1
 n_particles = 20
+
+# get machine and setup backend
+n_chips_required = 4
+front_end.setup(n_chips_required=n_chips_required,
+                model_binary_module=binaries,
+                machine_time_step=machine_time_step)
+
+
 
 spinnaker_link_used = 0
 packets_threshold = 30
@@ -52,7 +59,7 @@ packets_threshold = 30
 #    if not processor.is_monitor])
 spike_train = []
 if not use_spinn_link:
-    spike_train = load_spike_train(filename)
+    spike_train, video_sequence = load_vbottle(filename=filename, window_size=constants.US_PER_STEP/1000)
     if spike_train == -1:
         quit()
 
@@ -70,7 +77,7 @@ for x in range(0, n_particles):
     #     label="Particle {}".format(x), id=x, main_particle=main_particle)
     vertex = PfFullParticleVertex(
         x=constants.RETINA_X_SIZE/2, y=constants.RETINA_Y_SIZE/2,
-        r=constants.INITIAL_R, packet_threshold=packets_threshold,
+        r=constants.INITIAL_R,
         n_particles=n_particles, part_id=x,
         label="Particle {}".format(x), main_particle=main_particle)
 
@@ -93,7 +100,7 @@ else:
     input_vertex = ReverseIPTagMulticastSourceMachineVertex(
         virtual_key=constants.RETINA_BASE_KEY,
         buffer_notification_ip_address="0.0.0.0",
-        n_keys=1048575,
+        n_keys=1048576,
         label="Input Vertex", send_buffer_times=spike_train)
     front_end.add_machine_vertex_instance(input_vertex)
 
@@ -158,8 +165,11 @@ buffer_manager = front_end.buffer_manager()
 placement = placements.get_placement_of_vertex(the_main_particle)
 data = the_main_particle.get_data(buffer_manager, placement)
 
+
 #print "Data Extracted from Buffer"
 #print "Size {}".format(data.shape)
 #print(data)
 
 front_end.stop()
+
+processAndPlot(video_sequence, data)
