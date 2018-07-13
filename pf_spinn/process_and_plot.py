@@ -16,21 +16,3 @@ def processAndPlot(video_sequence, output_position):
 
         # plt.show()
         plt.pause(0.01)
-
-
-
-# spikes1, video_sequence = load_vbottle(filename="/home/aglover/workspace/datasets/spinnaker_tracking/1/ATIS/data.log", tsscaler=0.000000080)
-#
-# fig, ax = plt.subplots()
-# plt.gray()
-# for im in video_sequence :
-#     ax.cla()
-#     ax.imshow(im)
-#     #plt.show()
-#     plt.pause(0.01)
-
-
-
-# data[256,256] = [255,0,0]
-# plt.imshow(data, interpolation='nearest')
-# plt.show()

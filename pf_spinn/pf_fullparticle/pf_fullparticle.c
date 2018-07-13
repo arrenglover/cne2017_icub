@@ -37,7 +37,8 @@
 #define NEGATIVE_BIAS 0.2f;
 #define PACKETS_PER_PARTICLE 6
 #define DIV_VALUE 200
-#define EVENT_WINDOW_SIZE 500
+#define EVENT_WINDOW_SIZE 512
+#define RETINA_BUFFER_SIZE 1024
 
 #define CONSTANT1 (ANG_BUCKETS - 1) / (M_PI * 2.0)
 #define INV_INLIER_PAR 1.0/INLIER_PAR
@@ -649,7 +650,7 @@ bool initialize(uint32_t *timer_period) {
 //    recording_record(0, test_position, sizeof(test_position));
 
     // initialise my input_buffer for receiving packets
-    retina_buffer = circular_buffer_initialize(512); //in ints
+    retina_buffer = circular_buffer_initialize(RETINA_BUFFER_SIZE); //in ints
     if (retina_buffer == 0){
         log_info("Could not create retina buffer");
         return false;

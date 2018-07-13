@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib.pyplot as plt
 
 def load_spike_train(filename):
 
@@ -44,14 +45,12 @@ def load_vbottle(filename, window_size=100, tsscaler=0.000000080, address_bits =
 
     #convert dataset to spike train
     spike_train = [[] for i in range((2 ** address_bits))]
-    #print "The number of pixels is: {}".format(len(spike_train))
 
     #convert dataset to event-windows
     video_sequence = []
     video_sequence.append(np.ones((height, width), dtype=np.uint8)*255)
 
     for line in file:
-        #print line
 
         _, _, line = line.partition("(")
         line, _, _ = line.partition(")")
@@ -78,8 +77,7 @@ def load_vbottle(filename, window_size=100, tsscaler=0.000000080, address_bits =
             if(ctime_ms > ftime_ms + window_size) :
                 video_sequence.append(np.ones((height, width), dtype=np.uint8) * 255)
                 ftime_ms += window_size
+
             video_sequence[-1][Y[i]][X[i]] = 0
 
-
-
-    return spike_train, video_sequence
+    return spike_train, video_sequence, ftime_ms+window_size

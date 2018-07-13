@@ -39,54 +39,26 @@ filename = "/home/aglover/workspace/datasets/spinnaker_tracking/1/ATIS/data.log"
 machine_time_step = constants.US_PER_STEP #us
 operation_time = constants.US_PER_STEP * constants.MACHINE_STEPS / 1000 #ms
 time_scale_factor = 1
-n_particles = 20
-
-# get machine and setup backend
+n_particles = 200
 n_chips_required = 4
+spinnaker_link_used = 0
+
+print "Loading Dataset"
+spike_train = []
+if not use_spinn_link:
+    spike_train, video_sequence, data_time_ms = load_vbottle(filename=filename, window_size=constants.US_PER_STEP/1000, tsscaler=0.000000160)
+    if spike_train == -1:
+        quit()
+print "Dataset goes for {} ms".format(data_time_ms)
+
+
 front_end.setup(n_chips_required=n_chips_required,
                 model_binary_module=binaries,
                 machine_time_step=machine_time_step)
 
-
-
-spinnaker_link_used = 0
-packets_threshold = 30
-
-# calculate total number of 'free' cores for the given board
-# (i.e. does not include those busy with SARK or reinjection)
-# total_number_of_cores = len([
-#    processor for chip in machine.chips for processor in chip.processors
-#    if not processor.is_monitor])
-spike_train = []
-if not use_spinn_link:
-    spike_train, video_sequence = load_vbottle(filename=filename, window_size=constants.US_PER_STEP/1000)
-    if spike_train == -1:
-        quit()
-
 # VERTICES
 particle_list = list()
 filter_list = list()
-
-# create particles
-main_particle = True
-the_main_particle = None
-for x in range(0, n_particles):
-    # vertex = PfParticleVertex(
-    #     x=constants.RETINA_X_SIZE/2, y=constants.RETINA_Y_SIZE/2,
-    #     r=constants.INITIAL_R, packet_threshold=packets_threshold,
-    #     label="Particle {}".format(x), id=x, main_particle=main_particle)
-    vertex = PfFullParticleVertex(
-        x=constants.RETINA_X_SIZE/2, y=constants.RETINA_Y_SIZE/2,
-        r=constants.INITIAL_R,
-        n_particles=n_particles, part_id=x,
-        label="Particle {}".format(x), main_particle=main_particle)
-
-    if main_particle:
-        the_main_particle = vertex
-        main_particle = False
-
-    front_end.add_machine_vertex_instance(vertex)
-    particle_list.append(vertex)
 
 # create "input"
 # running with test data use this vertex
@@ -101,9 +73,11 @@ else:
         virtual_key=constants.RETINA_BASE_KEY,
         buffer_notification_ip_address="0.0.0.0",
         n_keys=1048576,
+        send_buffer_max_space=20*1024*1024,
         label="Input Vertex", send_buffer_times=spike_train)
     front_end.add_machine_vertex_instance(input_vertex)
 
+# create "output"
 output_vertex = ICUBOutputVertex(
     spinnaker_link_id=spinnaker_link_used, board_address=None,
     label="Output Vertex")
@@ -121,6 +95,24 @@ for y_row in range(0, constants.RETINA_Y_SIZE):
         MachineEdge(pre_vertex=input_vertex, post_vertex=vertex,
                     label="Edge between retina and filter"),
         partition_identifier)
+
+# create particles
+main_particle = True
+the_main_particle = None
+for x in range(0, n_particles):
+    vertex = PfFullParticleVertex(
+        x=constants.RETINA_X_SIZE/2, y=constants.RETINA_Y_SIZE/2,
+        r=constants.INITIAL_R,
+        n_particles=n_particles, part_id=x,
+        label="Particle {}".format(x), main_particle=main_particle)
+
+    if main_particle:
+        the_main_particle = vertex
+        main_particle = False
+
+    front_end.add_machine_vertex_instance(vertex)
+    particle_list.append(vertex)
+
 
 # EDGES from main_particle to filters
 for filter_vertex in filter_list:

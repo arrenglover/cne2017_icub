@@ -98,6 +98,7 @@ void receive_data_no_payload(uint key, uint payload) {
     use(payload);
     received_count++;
     //here we need to filter the events based on the LUT
+
     if(!LUT[X_MASK(key)])
         return;
 
