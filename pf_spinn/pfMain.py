@@ -46,7 +46,7 @@ spinnaker_link_used = 0
 print "Loading Dataset"
 spike_train = []
 if not use_spinn_link:
-    spike_train, video_sequence, data_time_ms = load_vbottle(filename=filename, window_size=constants.US_PER_STEP/1000, tsscaler=0.000000160)
+    spike_train, video_sequence, data_time_ms = load_vbottle(filename=filename, window_size=constants.US_PER_STEP/1000, tsscaler=0.000000320)
     if spike_train == -1:
         quit()
 print "Dataset goes for {} ms".format(data_time_ms)

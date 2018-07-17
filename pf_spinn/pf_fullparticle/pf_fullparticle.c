@@ -23,12 +23,12 @@
 #define ANG_BUCKETS 64
 #define INLIER_PAR_PLUS1 2.0k
 #define INV_INLIER_PAR 1.0k
-#define MIN_LIKE 0.2k
+#define MIN_LIKE 12.8k
 #define SIGMA 4.0k
 #define NEGATIVE_BIAS 0.2k;
 #define PACKETS_PER_PARTICLE 5
 #define DIV_VALUE 200
-#define EVENT_WINDOW_SIZE 512
+#define EVENT_WINDOW_SIZE 256
 #define RETINA_BUFFER_SIZE 1024
 #define TARGET_ELEMENTS 3
 #define SAVE_VECTOR_ELEMENTS TARGET_ELEMENTS
@@ -252,7 +252,7 @@ void send_roi()
     //this will send to the filters the updated ROI
     //only if the main_particle
     while (!spin1_send_mc_packet(filter_update_key + (XY_CODE((int)x, (int)y)),
-                (int)(r*1.3k), WITH_PAYLOAD)) {
+                (int)(r*1.2k), WITH_PAYLOAD)) {
             spin1_delay_us(1);
     }
 
