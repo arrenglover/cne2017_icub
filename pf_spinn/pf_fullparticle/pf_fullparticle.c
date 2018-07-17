@@ -9,39 +9,35 @@
 #include <simulation.h>
 #include <debug.h>
 #include <circular_buffer.h>
+#include <sqrt.h>
 
-#define TYPE_SELECT 1 //0-fixed, 1-float
-#if TYPE_SELECT == 0
-
-#define CALC_TYPE accum
-#define SUFFIX k
 #include <stdfix.h>
 
-#elif TYPE_SELECT == 1
+#define MY_RAND int_to_accum(spin1_rand() & 0x00007FFF)
+#define NEG_BIAS_CONSTANT 4.074k //0.2K * 64 / pi r^2
 
-#define CALC_TYPE float
-#define SUFFIX f
-
-#endif
-
-#define SPIN_RAND_MAX UINT32_MAX
-
-#define X_MASK(x) x&0x1FF
-#define Y_MASK(y) (y>>9)&0xFF
+#define X_MASK(x) (accum)(x&0x1FF)
+#define Y_MASK(y) (accum)((y>>9)&0xFF)
 #define XY_CODE(x, y) (x&0x1FF)|((y&0xFF)<<9)
 
 #define ANG_BUCKETS 64
-#define INLIER_PAR 1
-#define MIN_LIKE 0.2f
-#define SIGMA 1.0f
-#define NEGATIVE_BIAS 0.2f;
-#define PACKETS_PER_PARTICLE 6
+#define INLIER_PAR_PLUS1 2.0k
+#define INV_INLIER_PAR 1.0k
+#define MIN_LIKE 0.2k
+#define SIGMA 4.0k
+#define NEGATIVE_BIAS 0.2k;
+#define PACKETS_PER_PARTICLE 5
 #define DIV_VALUE 200
 #define EVENT_WINDOW_SIZE 512
 #define RETINA_BUFFER_SIZE 1024
-
-#define CONSTANT1 (ANG_BUCKETS - 1) / (M_PI * 2.0)
-#define INV_INLIER_PAR 1.0/INLIER_PAR
+#define TARGET_ELEMENTS 3
+#define SAVE_VECTOR_ELEMENTS TARGET_ELEMENTS
+#define MAX_RADIUS 40.0k
+#define MAX_RADIUS_PLUS2_SQRD 1765.0k
+#define MAX_RADIUS_PLUS2 42
+#define K_PI 3.14159265359k
+#define K_PI_4 0.78539816k	/* pi/4 */
+#define LOG_COUNTER_PERIOD 1000000
 
 
 //! SYSTEM VARIABLES
@@ -49,8 +45,9 @@ static uint32_t simulation_ticks = 0;
 static uint32_t infinite_run = 0;
 static uint32_t time = 0;
 static uint32_t timer_period;
-static uint32_t log_counter = 0;
+static uint32_t log_counter = LOG_COUNTER_PERIOD;
 static uint32_t recording_flags = 0;
+static float save_vector[SAVE_VECTOR_ELEMENTS];
 
 typedef enum regions_e {
     SYSTEM_REGION,
@@ -74,22 +71,26 @@ typedef enum callback_priorities {
 
 //! ALGORITHM VARIABLES
 static uint32_t event_window[EVENT_WINDOW_SIZE];
+//static accum event_window_x[EVENT_WINDOW_SIZE];
+//static accum event_window_y[EVENT_WINDOW_SIZE];
 static uint32_t start_window = 0;
 static uint32_t size_window = 0;
 
-static float L[ANG_BUCKETS];
-static float score;
-static float negativeScaler;
+static accum **LUT_SQRT;
+static accum L[ANG_BUCKETS];
+static accum score;
+static accum negativeScaler;
 
 
-static float x = 64.0f;
-static float y = 64.0f;
-static float r = 30.0f;
-static float l = MIN_LIKE;
-static float w = 1.0f;
-static float n = 0.0f;
+static accum x = 64.0k;
+static accum y = 64.0k;
+static accum r = 30.0k;
+static accum l = MIN_LIKE;
+static accum w = 1.0f;
+static accum n = 0.0f;
 
-static float target[3];
+static accum target[TARGET_ELEMENTS];
+static uint32_t random_part_i;
 
 //! SENDING/RECEIVING VARIABLES
 
@@ -98,27 +99,28 @@ static uint32_t filter_update_key;
 static uint32_t output_key;
 
 static uint32_t i_has_key;
-static uint32_t p2p_my_key;
+static uint32_t p2p_key;
 static uint32_t my_p2p_id;
 
 static uint32_t n_particles;
 static uint32_t last_index;
-static float **proc_data, **work_data;
+static accum **proc_data, **work_data;
 static circular_buffer retina_buffer;
 
 static uint32_t full_buffer;
 static uint32_t my_turn;
 
 typedef enum packet_identifiers{
-    X_IND = 0, Y_IND = 1, R_IND = 2, L_IND = 3, W_IND = 4, N_IND = 5
+    X_IND = 0, Y_IND = 1, R_IND = 2, W_IND = 4, N_IND = 5
 }packet_identifiers;
 
 
 //! DEBUG VARIABLES
-static uint32_t events_processed = 0;
-static uint32_t update_count = 0;
 static uint32_t received_count = 0;
 static uint32_t dropped_count = 0;
+static uint32_t events_processed = 0;
+static uint32_t events_unprocessed = 0;
+static uint32_t update_count = 0;
 static uint32_t packets_received = 0;
 
 static bool packet_sending_turn = false;
@@ -130,13 +132,13 @@ static bool tried_to_call_proc_done = false;
 //! \brief converts a int to a float via bit wise conversion
 //! \param[in] y: the int to convert
 //! \param[out] the converted float
-static inline float int_to_float( int data){
-    union { float x; int y; } cast_union;
+static inline accum int_to_accum( int data){
+    union { accum x; int y; } cast_union;
     cast_union.y = data;
     return cast_union.x;
 }
-static inline int float_to_int( float data){
-    union { float x; int y; } cast_union;
+static inline int accum_to_int( accum data){
+    union { accum x; int y; } cast_union;
     cast_union.x = data;
     return cast_union.y;
 }
@@ -172,7 +174,7 @@ void receive_particle_data_packet(uint key, uint payload) {
 
     //load in data
     work_data[packets_received++ / PACKETS_PER_PARTICLE][key&0x7] =
-        int_to_float(payload);
+        int_to_accum(payload);
 
     if(packets_received == my_turn) { //it is our turn to send data
         tried_to_call_my_turn = true;
@@ -182,7 +184,7 @@ void receive_particle_data_packet(uint key, uint payload) {
 
     if(packets_received == full_buffer) { //perform update
 
-        float **temp = work_data;
+        accum **temp = work_data;
         work_data = proc_data;
         proc_data = temp;
 
@@ -203,23 +205,15 @@ void send_p2p() {
     }
 
     //do the sending
-    while (!spin1_send_mc_packet(p2p_my_key + X_IND, float_to_int(x),
-            WITH_PAYLOAD))
+    while(!spin1_send_mc_packet(p2p_key + X_IND, accum_to_int(x), WITH_PAYLOAD))
         spin1_delay_us(1);
-    while (!spin1_send_mc_packet(p2p_my_key + Y_IND, float_to_int(y),
-            WITH_PAYLOAD))
+    while(!spin1_send_mc_packet(p2p_key + Y_IND, accum_to_int(y), WITH_PAYLOAD))
         spin1_delay_us(1);
-    while (!spin1_send_mc_packet(p2p_my_key + R_IND, float_to_int(r),
-            WITH_PAYLOAD))
+    while(!spin1_send_mc_packet(p2p_key + R_IND, accum_to_int(r), WITH_PAYLOAD))
         spin1_delay_us(1);
-    while (!spin1_send_mc_packet(p2p_my_key + L_IND, float_to_int(l),
-            WITH_PAYLOAD))
+    while(!spin1_send_mc_packet(p2p_key + W_IND, accum_to_int(w), WITH_PAYLOAD))
         spin1_delay_us(1);
-    while (!spin1_send_mc_packet(p2p_my_key + W_IND, float_to_int(w),
-            WITH_PAYLOAD))
-        spin1_delay_us(1);
-    while (!spin1_send_mc_packet(p2p_my_key + N_IND, float_to_int(n),
-            WITH_PAYLOAD))
+    while(!spin1_send_mc_packet(p2p_key + N_IND, accum_to_int(n), WITH_PAYLOAD))
         spin1_delay_us(1);
 
     //update the diagnostics for particle filter update rate.
@@ -258,7 +252,7 @@ void send_roi()
     //this will send to the filters the updated ROI
     //only if the main_particle
     while (!spin1_send_mc_packet(filter_update_key + (XY_CODE((int)x, (int)y)),
-                (int)(r*1.4f), WITH_PAYLOAD)) {
+                (int)(r*1.3k), WITH_PAYLOAD)) {
             spin1_delay_us(1);
     }
 
@@ -298,7 +292,6 @@ void load_particle_into_next_array() {
     work_data[last_index][X_IND] = x;
     work_data[last_index][Y_IND] = y;
     work_data[last_index][R_IND] = r;
-    work_data[last_index][L_IND] = l;
     work_data[last_index][W_IND] = w;
     work_data[last_index][N_IND] = n;
 
@@ -308,14 +301,14 @@ void load_particle_into_next_array() {
 //!     window size.
 void normalise() {
 
-    target[0] = 0; target[1] = 0; target[2] = 0;
-    float new_n = 0;
-    float total = 0;
+    target[0] = 0.0k; target[1] = 0.0k; target[2] = 0.0k;
+    accum new_n = 0.0k;
+    accum total = 0.0k;
 
     for(uint32_t i = 0; i < n_particles; i++) {
         total += proc_data[i][W_IND];
     }
-    total = 1.0 / total;
+    total = 1.0k / total;
 
     for(uint32_t i = 0; i < n_particles; i++) {
         proc_data[i][W_IND] *= total;
@@ -325,31 +318,29 @@ void normalise() {
         new_n += proc_data[i][N_IND] * proc_data[i][W_IND];
     }
 
-    if(size_window > new_n + 50)
-        size_window = new_n;
+    if(size_window > (uint32_t)(new_n + 50.0k))
+        size_window = (uint32_t)new_n;
 
 }
 
 //! \brief find a random particle to unload (this is the resample step)
 void unload_weighted_random_particle() {
 
-    float rn = (float)spin1_rand() / SPIN_RAND_MAX;
+    accum rn = MY_RAND;
 
     //set resampled according to distribution of weights
-    float accumed_sum = 0.0;
-    uint32_t i = 0;
-    for(i = 0; i < n_particles; i++) {
-        accumed_sum += proc_data[i][W_IND];
+    accum accumed_sum = 0.0;
+    for(random_part_i = 0; random_part_i < n_particles; random_part_i++) {
+        accumed_sum += proc_data[random_part_i][W_IND];
         if(accumed_sum > rn) break;
     }
-    if(i == n_particles) i--;
+    if(random_part_i == n_particles) random_part_i--;
 
-    x = proc_data[i][X_IND];
-    y = proc_data[i][Y_IND];
-    r = proc_data[i][R_IND];
-    w = proc_data[i][W_IND];
-    l = proc_data[i][L_IND];
-    n = proc_data[i][N_IND];
+    x = proc_data[random_part_i][X_IND];
+    y = proc_data[random_part_i][Y_IND];
+    r = proc_data[random_part_i][R_IND];
+    w = proc_data[random_part_i][W_IND];
+    n = proc_data[random_part_i][N_IND];
 
 //    static int divisor = 0;
 //    if(divisor++ % DIV_VALUE == 0) {
@@ -360,87 +351,101 @@ void unload_weighted_random_particle() {
 
 void predict(float sigma) {
 
-    //TODO: should this be changed to a gaussian distribution?
-    x += 2.0 * sigma * ((float)spin1_rand() / SPIN_RAND_MAX) - sigma;
-    y += 2.0 * sigma * ((float)spin1_rand() / SPIN_RAND_MAX) - sigma;
-    r += 2.0 * sigma * ((float)spin1_rand() / SPIN_RAND_MAX) - sigma;
+    //should this be changed to a gaussian distribution?
 
-    if(r < 10)      r = 10;
-    if(r > 40)      r = 40;
+    x += 2.0 * sigma * MY_RAND - sigma;
+    y += 2.0 * sigma * MY_RAND - sigma;
+    r += 0.4 * (2.0 * sigma * MY_RAND - sigma);
+
+    if(r < 10.0k)      r = 10.0k;
+    if(r > MAX_RADIUS)      r = MAX_RADIUS;
     if(x < -r)      x = -r;
-    if(x > 304+r)   x = 304+r;
+    if(x > 304.0k+r)   x = 304.0k+r;
     if(y < -r)      y = -r;
-    if(y > 240+r)   y = 240 + r;
+    if(y > 240.0k+r)   y = 240.0k + r;
 
 }
 
-static inline void incremental_calculation(uint32_t vx, uint32_t vy, uint32_t count) {
+static inline accum approxatan2(accum y, accum x) {
 
-    //update the L vector based on the event
-    float dx = vx - x;
-    float dy = vy - y;
+    accum absy = y > 0.0k ? y : -y;
+    accum absx = x > 0.0k ? x : -x;
+    accum a = absy < absx ? absy / absx : absx / absy;
+    accum r = a * (K_PI_4 - (a - 1.0k) * 0.2733185k);
+    if(absy > absx) r = 1.57079637k - r;
+    if(x < 0.0k) r = 3.14159274k - r;
+    if(y < 0.0k) r = -r;
 
-    float sqrd = sqrt(dx * dx + dy * dy) - r;
-    if(sqrd > 1.0 + INLIER_PAR)
-        return;
+    return r;
 
-    float fsqrd = sqrd > 0 ? sqrd : -sqrd;
-
-    int L_i = 0.5 + (CONSTANT1 * (atan2f(dy, dx) + M_PI));
-    float cval = 0.0;
-
-    if(fsqrd < 1.0)
-        cval = 1.0;
-    else if(fsqrd < 1.0 + INLIER_PAR)
-        cval = (1.0 + INLIER_PAR - fsqrd) * INV_INLIER_PAR;
-
-    if(cval > 0.0) {
-        float improved = cval - L[L_i];
-        if(improved > 0) {
-            L[L_i] = cval;
-            score += improved;
-            if(score >= l) {
-                l = score;
-                n = count;
-            }
-        }
-    } else {
-        score -= negativeScaler;
-    }
 }
 
 void calculate_likelihood() {
 
     //load in new data
-    uint cpsr = spin1_int_disable();
+    //uint cpsr = spin1_int_disable();
     uint32_t num_new_events = circular_buffer_size(retina_buffer);
     for(uint32_t i = 0; i < num_new_events; i++) {
         start_window = (start_window + 1) % EVENT_WINDOW_SIZE;
         circular_buffer_get_next(retina_buffer, &event_window[start_window]);
     }
-    spin1_mode_restore(cpsr);
-    events_processed += num_new_events;
+    //spin1_mode_restore(cpsr);
+
 
     //set the new window size
     size_window = size_window + num_new_events;
     if(size_window > EVENT_WINDOW_SIZE) size_window = EVENT_WINDOW_SIZE;
 
+    int events_processed_temp = 0;
+    if(num_new_events < size_window)
+        events_processed_temp = num_new_events;
+    else
+        events_processed_temp = size_window;
+    events_unprocessed += num_new_events - events_processed_temp;
+    events_processed += events_processed_temp;
+
     //initialise the likelihood calculation
     l = MIN_LIKE;
-    score = 0;
-    n = size_window;
+    score = 0.0k;
+    n = (accum)size_window;
     for(uint32_t i = 0; i < ANG_BUCKETS; i++) {
-        L[i] = 0;
+        L[i] = 0.0k;
     }
-    negativeScaler = (ANG_BUCKETS / (M_PI * r * r)) * NEGATIVE_BIAS;
+    negativeScaler = NEG_BIAS_CONSTANT / (r * r);
 
     //calculate the likelihood;
+    accum dx, dy, D, ABSD, cval;
+    uint32_t L_i, absdx, absdy;
+
     uint32_t count = 0;
     uint32_t i = start_window;
     while(count < size_window) {
 
-        incremental_calculation(X_MASK(event_window[i]), Y_MASK(event_window[i]), count);
-        //spin1_delay_us(1);
+        dx = X_MASK(event_window[i]) - x;
+        dy = Y_MASK(event_window[i]) - y;
+        absdx = dx > 0.0k ? (uint32_t)(dx + 0.5k) : (uint32_t)(-dx + 0.5k);
+        absdy = dy > 0.0k ? (uint32_t)(dy + 0.5k) : (uint32_t)(-dy + 0.5k);
+
+        if(absdx < MAX_RADIUS_PLUS2 && absdy < MAX_RADIUS_PLUS2) {
+
+            D = LUT_SQRT[absdy][absdx] - r;
+            ABSD = D > 0.0k ? D : -D;
+
+            if(ABSD < INLIER_PAR_PLUS1) {
+                L_i = (uint32_t)(0.5k + 10.026769884k * (approxatan2(dy, dx) + K_PI));
+                cval = ABSD < 1.0k ? 1.0k : INLIER_PAR_PLUS1 - ABSD;
+                if(cval > L[L_i]) {
+                    score = (score + cval) - L[L_i];
+                    L[L_i] = cval;
+                    if(score > l) {
+                        l = score;
+                        n = count;
+                    }
+                }
+            } else {
+                score -= negativeScaler;
+            }
+        }
 
         //update our counters
         if(i == 0) i = EVENT_WINDOW_SIZE;
@@ -475,6 +480,7 @@ void particle_filter_update_step(uint do_p2p, uint do_calc) {
     unload_weighted_random_particle();
     predict(SIGMA);
     calculate_likelihood();
+    //w = 0.5k;
 
 
     //do final tasks
@@ -511,6 +517,10 @@ void update(uint ticks, uint b) {
 
     time++;
 
+    //accum a = MY_RAND;
+    //log_info("Using Fixed Point (%d %d 0.%d%d%d)", sizeof(accum), (int)a, (int)(a*10)%10, (int)(a*100)%10, (int)(a*1000)%10);
+
+
     //log_debug("on tick %d of %d", time, simulation_ticks);
 
     // check that the run time hasn't already elapsed and thus needs to be
@@ -530,21 +540,32 @@ void update(uint ticks, uint b) {
 
     }
 
-    if (recording_flags > 0)
-        recording_record(0, target, sizeof(target));
+    if (recording_flags > 0) {
+        for(int i = 0; i < TARGET_ELEMENTS; i++)
+            save_vector[i] = (float)target[i];
+        recording_record(0, save_vector, sizeof(save_vector));
+    }
 
     if(time == 0) {
-        log_info("my key = %d", p2p_my_key);
+        log_info("my key = %d", p2p_key);
     }
 
     if(time*timer_period >= log_counter) {
-        log_counter += 1000000;
-        log_info("Update Rate = %d Hz | # EventProcessed = %d Hz | "
-            "Events Received = %d Hz  | Dropped: %d Hz",
-            update_count, events_processed, received_count, dropped_count);
+        log_counter += LOG_COUNTER_PERIOD;
+        float avg_period = 1000.0f/(float)update_count;
+
+        log_info("Update: %d Hz / %d.%d%d ms | Events: %d/%d "
+            "(%d dropped / %d unprocessed)",
+            update_count, (int)avg_period, (int)(avg_period*10)%10,
+            (int)(avg_period*100)%10, events_processed, received_count,
+            dropped_count, events_unprocessed);
+
+        log_info("Score %d.%d (%d)", (int)score, (int)(score*10)%10, random_part_i);
+
         //log_info("Received Particle Messages: %d", packets_received);
         update_count = 0;
         events_processed = 0;
+        events_unprocessed = 0;
         received_count = 0;
         dropped_count = 0;
 
@@ -593,7 +614,7 @@ bool read_config(address_t address){
 //! \return bool which is successful if read correctly, false otherwise
 bool read_transmission_keys(address_t address){
     i_has_key = address[HAS_KEY];
-    p2p_my_key = address[P2P_KEY];
+    p2p_key = address[P2P_KEY];
     filter_update_key = address[FILTER_UPDATE_KEY];
     output_key = address[OUTPUT_KEY];
 
@@ -656,20 +677,32 @@ bool initialize(uint32_t *timer_period) {
         return false;
     }
 
-    proc_data = spin1_malloc(n_particles * sizeof(float*));
-    work_data = spin1_malloc(n_particles * sizeof(float*));
+    proc_data = spin1_malloc(n_particles * sizeof(accum*));
+    work_data = spin1_malloc(n_particles * sizeof(accum*));
     for(uint32_t i = 0; i < n_particles; i++) {
-        proc_data[i] = spin1_malloc(PACKETS_PER_PARTICLE * sizeof(float));
-        work_data[i] = spin1_malloc(PACKETS_PER_PARTICLE * sizeof(float));
+        proc_data[i] = spin1_malloc(PACKETS_PER_PARTICLE * sizeof(accum));
+        work_data[i] = spin1_malloc(PACKETS_PER_PARTICLE * sizeof(accum));
         if(!proc_data[i] || !work_data[i]) {
             log_error("not enough space to create p2p data");
             return false;
         }
     }
 
+    uint32_t n_indices = MAX_RADIUS_PLUS2 + 1;
+    LUT_SQRT = spin1_malloc(n_indices * sizeof(accum*));
+    for(uint32_t i = 0; i < n_indices; i++) {
+        LUT_SQRT[i] = spin1_malloc(n_indices * sizeof(accum));
+        for(uint32_t j = 0; j < n_indices; j++) {
+            accum y = (accum)i;
+            accum x = (accum)j;
+            LUT_SQRT[i][j] = sqrtk(y * y + x * x);
+        }
+    }
+
+
     load_particle_into_next_array();
 
-    //spin1_srand (p2p_my_key);
+    spin1_srand (p2p_key);
 
     log_info("Initialisation successful");
 

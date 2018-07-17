@@ -51,7 +51,7 @@ class PfFullParticleVertex(
     CONFIG_PARAM_SIZE = 24
     RECORD_BYTES_PER_STEP = 12
 
-    KEYS_REQUIRED = 6
+    KEYS_REQUIRED = 5
 
     def __init__(self, x, y, r, n_particles, label, part_id,
                  main_particle, constraints=None):

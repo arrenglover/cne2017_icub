@@ -68,6 +68,7 @@ if use_spinn_link:
         spinnaker_link_id=spinnaker_link_used, board_address=None,
         label="Input Vertex")
     front_end.add_machine_vertex_instance(input_vertex)
+
 else:
     input_vertex = ReverseIPTagMulticastSourceMachineVertex(
         virtual_key=constants.RETINA_BASE_KEY,
@@ -82,6 +83,7 @@ output_vertex = ICUBOutputVertex(
     spinnaker_link_id=spinnaker_link_used, board_address=None,
     label="Output Vertex")
 front_end.add_machine_vertex_instance(output_vertex)
+
 
 # create retina filters and edges from retina to filters
 for y_row in range(0, constants.RETINA_Y_SIZE):
