@@ -110,9 +110,9 @@ static circular_buffer retina_buffer;
 static uint32_t full_buffer;
 static uint32_t my_turn;
 
-#define PACKETS_PER_PARTICLE 5
+#define PACKETS_PER_PARTICLE 4
 typedef enum packet_identifiers{
-    X_IND = 0, Y_IND = 1, R_IND = 2, W_IND = 4, N_IND = 5
+    X_IND = 0, Y_IND = 1, R_IND = 2, W_IND = 3
 }packet_identifiers;
 
 
@@ -123,6 +123,7 @@ static uint32_t events_processed = 0;
 static uint32_t events_unprocessed = 0;
 static uint32_t update_count = 0;
 static uint32_t packets_received = 0;
+static uint32_t double_processed = 0;
 
 static bool packet_sending_turn = false;
 static bool finished_processing = true;
@@ -214,8 +215,6 @@ void send_p2p() {
         spin1_delay_us(1);
     while(!spin1_send_mc_packet(p2p_key + W_IND, accum_to_int(w), WITH_PAYLOAD))
         spin1_delay_us(1);
-    while(!spin1_send_mc_packet(p2p_key + N_IND, accum_to_int(n), WITH_PAYLOAD))
-        spin1_delay_us(1);
 
     //update the diagnostics for particle filter update rate.
     update_count++;
@@ -294,7 +293,6 @@ void load_particle_into_next_array() {
     work_data[last_index][Y_IND] = y;
     work_data[last_index][R_IND] = r;
     work_data[last_index][W_IND] = w;
-    work_data[last_index][N_IND] = n;
 
 }
 
@@ -303,7 +301,6 @@ void load_particle_into_next_array() {
 void normalise() {
 
     target[0] = 0.0k; target[1] = 0.0k; target[2] = 0.0k;
-    accum new_n = 0.0k;
     accum total = 0.0k;
 
     for(uint32_t i = 0; i < n_particles; i++) {
@@ -316,11 +313,7 @@ void normalise() {
         target[0] += proc_data[i][X_IND] * proc_data[i][W_IND];
         target[1] += proc_data[i][Y_IND] * proc_data[i][W_IND];
         target[2] += proc_data[i][R_IND] * proc_data[i][W_IND];
-        new_n += proc_data[i][N_IND] * proc_data[i][W_IND];
     }
-
-    if(size_window > (uint32_t)(new_n + 50.0k))
-        size_window = (uint32_t)new_n;
 
 }
 
@@ -341,7 +334,6 @@ void unload_weighted_random_particle() {
     y = proc_data[random_part_i][Y_IND];
     r = proc_data[random_part_i][R_IND];
     w = proc_data[random_part_i][W_IND];
-    n = proc_data[random_part_i][N_IND];
 
 //    static int divisor = 0;
 //    if(divisor++ % DIV_VALUE == 0) {
@@ -404,6 +396,8 @@ void calculate_likelihood() {
         events_processed_temp = size_window;
     events_unprocessed += num_new_events - events_processed_temp;
     events_processed += events_processed_temp;
+    if(num_new_events < EVENT_WINDOW_SIZE)
+        double_processed += EVENT_WINDOW_SIZE - num_new_events;
 
     //initialise the likelihood calculation
     l = MIN_LIKE;
@@ -428,13 +422,6 @@ void calculate_likelihood() {
         absdx = dx > 0.0k ? (uint32_t)(dx + 0.5k) : (uint32_t)(-dx + 0.5k);
         absdy = dy > 0.0k ? (uint32_t)(dy + 0.5k) : (uint32_t)(-dy + 0.5k);
 
-//        //DEBUG CODE PLEASE REMOVE
-//        if(absdx > MAX_RADIUS_PLUS2)
-//            absdx = 0;
-//        if(absdy > MAX_RADIUS_PLUS2)
-//            absdy = 0;
-//        //DEBUG CODE PLEASE REMOVE
-
         if(absdx <= MAX_RADIUS_PLUS2 && absdy <= MAX_RADIUS_PLUS2) {
 
             D = LUT_SQRT[absdy][absdx] - r;
@@ -448,7 +435,6 @@ void calculate_likelihood() {
                     L[L_i] = cval;
                     if(score > l) {
                         l = score;
-                        n = count;
                     }
                 }
             } else {
@@ -462,7 +448,6 @@ void calculate_likelihood() {
         count++;
     }
 
-    if(n < 100) n = 100;
     w = w * l;
 
 }
@@ -564,22 +549,25 @@ void update(uint ticks, uint b) {
         float avg_period = 1000.0f/(float)update_count;
 
         log_info("Update: %d Hz / %d.%d%d ms | Events: %d/%d "
-            "(%d dropped / %d unprocessed)",
+            "(%d dropped / %d unprocessed / %d overprocessed)",
             update_count, (int)avg_period, (int)(avg_period*10)%10,
             (int)(avg_period*100)%10, events_processed, received_count,
-            dropped_count, events_unprocessed);
+            dropped_count, events_unprocessed, double_processed);
 
         log_info("Score %d.%d (%d)", (int)score, (int)(score*10)%10, random_part_i);
-        log_info("Window Size: %d, Start Index: %d", size_window, start_window);
+        //log_info("Window Size: %d, Start Index: %d", size_window, start_window);
 
         //log_info("Received Particle Messages: %d", packets_received);
+        //log_info("%d %d (%d %d)", finished_processing, packet_sending_turn, tried_to_call_proc_done, tried_to_call_my_turn);
+
         update_count = 0;
         events_processed = 0;
         events_unprocessed = 0;
         received_count = 0;
         dropped_count = 0;
+        double_processed = 0;
 
-        //log_info("%d %d (%d %d)", finished_processing, packet_sending_turn, tried_to_call_proc_done, tried_to_call_my_turn);
+
     }
 
     if(time == 0 && my_p2p_id == 0) {
