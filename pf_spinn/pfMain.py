@@ -39,7 +39,7 @@ filename = "/home/aglover/workspace/datasets/spinnaker_tracking/1/ATIS/data.log"
 machine_time_step = constants.US_PER_STEP #us
 operation_time = constants.US_PER_STEP * constants.MACHINE_STEPS / 1000 #ms
 time_scale_factor = 1
-n_particles = 200
+n_particles = constants.PARTICLES
 n_chips_required = 4
 spinnaker_link_used = 0
 

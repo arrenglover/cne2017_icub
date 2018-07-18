@@ -33,6 +33,7 @@ RETINA_X_SIZE = 304
 RETINA_Y_SIZE = 240
 RETINA_Y_BIT_SHIFT = 9
 INITIAL_R = 20
+PARTICLES = 100
 
 #used by old particle/aggregator system
 EDGE_PARTITION_RE_SAMPLE = "Resample"

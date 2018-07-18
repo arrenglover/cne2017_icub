@@ -4,6 +4,7 @@
 #include <math.h>
 #include "spin1_api.h"
 #include "common-typedefs.h"
+#include <string.h>
 #include <data_specification.h>
 #include <recording.h>
 #include <simulation.h>
@@ -26,7 +27,6 @@
 #define MIN_LIKE 12.8k
 #define SIGMA 4.0k
 #define NEGATIVE_BIAS 0.2k;
-#define PACKETS_PER_PARTICLE 5
 #define DIV_VALUE 200
 #define EVENT_WINDOW_SIZE 256
 #define RETINA_BUFFER_SIZE 1024
@@ -110,6 +110,7 @@ static circular_buffer retina_buffer;
 static uint32_t full_buffer;
 static uint32_t my_turn;
 
+#define PACKETS_PER_PARTICLE 5
 typedef enum packet_identifiers{
     X_IND = 0, Y_IND = 1, R_IND = 2, W_IND = 4, N_IND = 5
 }packet_identifiers;
@@ -252,7 +253,7 @@ void send_roi()
     //this will send to the filters the updated ROI
     //only if the main_particle
     while (!spin1_send_mc_packet(filter_update_key + (XY_CODE((int)x, (int)y)),
-                (int)(r*1.2k), WITH_PAYLOAD)) {
+                (int)(r+7.0k), WITH_PAYLOAD)) {
             spin1_delay_us(1);
     }
 
@@ -408,9 +409,10 @@ void calculate_likelihood() {
     l = MIN_LIKE;
     score = 0.0k;
     n = (accum)size_window;
-    for(uint32_t i = 0; i < ANG_BUCKETS; i++) {
-        L[i] = 0.0k;
-    }
+    memset(L, 0, ANG_BUCKETS * sizeof(accum));
+//    for(uint32_t i = 0; i < ANG_BUCKETS; i++) {
+//        L[i] = 0.0k;
+//    }
     negativeScaler = NEG_BIAS_CONSTANT / (r * r);
 
     //calculate the likelihood;
@@ -426,7 +428,14 @@ void calculate_likelihood() {
         absdx = dx > 0.0k ? (uint32_t)(dx + 0.5k) : (uint32_t)(-dx + 0.5k);
         absdy = dy > 0.0k ? (uint32_t)(dy + 0.5k) : (uint32_t)(-dy + 0.5k);
 
-        if(absdx < MAX_RADIUS_PLUS2 && absdy < MAX_RADIUS_PLUS2) {
+//        //DEBUG CODE PLEASE REMOVE
+//        if(absdx > MAX_RADIUS_PLUS2)
+//            absdx = 0;
+//        if(absdy > MAX_RADIUS_PLUS2)
+//            absdy = 0;
+//        //DEBUG CODE PLEASE REMOVE
+
+        if(absdx <= MAX_RADIUS_PLUS2 && absdy <= MAX_RADIUS_PLUS2) {
 
             D = LUT_SQRT[absdy][absdx] - r;
             ABSD = D > 0.0k ? D : -D;
@@ -561,6 +570,7 @@ void update(uint ticks, uint b) {
             dropped_count, events_unprocessed);
 
         log_info("Score %d.%d (%d)", (int)score, (int)(score*10)%10, random_part_i);
+        log_info("Window Size: %d, Start Index: %d", size_window, start_window);
 
         //log_info("Received Particle Messages: %d", packets_received);
         update_count = 0;
