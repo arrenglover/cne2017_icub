@@ -15,7 +15,7 @@
 #include <stdfix.h>
 
 #define MY_RAND int_to_accum(spin1_rand() & 0x00007FFF)
-#define NEG_BIAS_CONSTANT 4.074k //0.2K * 64 / pi r^2
+#define NEG_BIAS_CONSTANT 40.74k //2.0 * 64 / pi r^2
 
 #define X_MASK(x) (accum)(x&0x1FF)
 #define Y_MASK(y) (accum)((y>>9)&0xFF)
@@ -24,17 +24,16 @@
 #define ANG_BUCKETS 64
 #define INLIER_PAR_PLUS1 2.0k
 #define INV_INLIER_PAR 1.0k
-#define MIN_LIKE 12.8k
-#define SIGMA 4.0k
-#define NEGATIVE_BIAS 0.2k;
+#define MIN_LIKE 6.4k //64 * 0.2k
+#define SIGMA 2.0k
 #define DIV_VALUE 200
-#define EVENT_WINDOW_SIZE 256
-#define RETINA_BUFFER_SIZE 1024
+#define EVENT_WINDOW_SIZE 1024
+#define RETINA_BUFFER_SIZE 4096
 #define TARGET_ELEMENTS 3
 #define SAVE_VECTOR_ELEMENTS TARGET_ELEMENTS
 #define MAX_RADIUS 40.0k
-#define MAX_RADIUS_PLUS2_SQRD 1765.0k
 #define MAX_RADIUS_PLUS2 42
+#define MAX_RADIUS_PLUS2_SQRD 1764
 #define K_PI 3.14159265359k
 #define K_PI_4 0.78539816k	/* pi/4 */
 #define LOG_COUNTER_PERIOD 1000000
@@ -76,7 +75,7 @@ static uint32_t event_window[EVENT_WINDOW_SIZE];
 static uint32_t start_window = 0;
 static uint32_t size_window = 0;
 
-static accum **LUT_SQRT;
+static accum *LUT_SQRT;
 static accum L[ANG_BUCKETS];
 static accum score;
 static accum negativeScaler;
@@ -124,6 +123,7 @@ static uint32_t events_unprocessed = 0;
 static uint32_t update_count = 0;
 static uint32_t packets_received = 0;
 static uint32_t double_processed = 0;
+static uint32_t n_neg_events = 0;
 
 static bool packet_sending_turn = false;
 static bool finished_processing = true;
@@ -252,7 +252,7 @@ void send_roi()
     //this will send to the filters the updated ROI
     //only if the main_particle
     while (!spin1_send_mc_packet(filter_update_key + (XY_CODE((int)x, (int)y)),
-                (int)(r+7.0k), WITH_PAYLOAD)) {
+                (int)(r+15.0k), WITH_PAYLOAD)) {
             spin1_delay_us(1);
     }
 
@@ -264,14 +264,10 @@ void send_position_out()
     if(!is_main)
         return;
 
-
-
-
-        //send a message out
-//        while (!spin1_send_mc_packet(
-//            output_key + (codexy(x, y) << 1), 0, NO_PAYLOAD)) {
-//            spin1_delay_us(1);
-//        }
+    //send a message out
+    while (!spin1_send_mc_packet(output_key + (XY_CODE((uint32_t)x, (uint32_t)y) << 1), 0, NO_PAYLOAD)) {
+        spin1_delay_us(1);
+    }
 
 //        static int dropper = 0;
 //        if(dropper % 100 == 0)
@@ -348,7 +344,7 @@ void predict(float sigma) {
 
     x += 2.0 * sigma * MY_RAND - sigma;
     y += 2.0 * sigma * MY_RAND - sigma;
-    r += 0.4 * (2.0 * sigma * MY_RAND - sigma);
+    r += 0.2 * (2.0 * sigma * MY_RAND - sigma);
 
     if(r < 10.0k)      r = 10.0k;
     if(r > MAX_RADIUS)      r = MAX_RADIUS;
@@ -378,7 +374,9 @@ void calculate_likelihood() {
     //load in new data
     //uint cpsr = spin1_int_disable();
     uint32_t num_new_events = circular_buffer_size(retina_buffer);
-    for(uint32_t i = 0; i < num_new_events; i++) {
+    uint32_t min_batch_size = (uint32_t)(K_PI * r + 0.5k);
+    uint32_t num_batch_events = min_batch_size < num_new_events ? min_batch_size : num_new_events;
+    for(uint32_t i = 0; i < num_batch_events; i++) {
         start_window = (start_window + 1) % EVENT_WINDOW_SIZE;
         circular_buffer_get_next(retina_buffer, &event_window[start_window]);
     }
@@ -386,32 +384,33 @@ void calculate_likelihood() {
 
 
     //set the new window size
-    size_window = size_window + num_new_events;
+    size_window = size_window + num_batch_events;
     if(size_window > EVENT_WINDOW_SIZE) size_window = EVENT_WINDOW_SIZE;
 
-    int events_processed_temp = 0;
-    if(num_new_events < size_window)
-        events_processed_temp = num_new_events;
-    else
-        events_processed_temp = size_window;
-    events_unprocessed += num_new_events - events_processed_temp;
-    events_processed += events_processed_temp;
-    if(num_new_events < EVENT_WINDOW_SIZE)
-        double_processed += EVENT_WINDOW_SIZE - num_new_events;
+   // int events_processed_temp = 0;
+//    if(num_new_events < size_window)
+//        events_processed_temp = num_new_events;
+//    else
+//        events_processed_temp = size_window;
+    //events_unprocessed += num_new_events - events_processed_temp;
+    events_processed += num_batch_events;
+    if(num_batch_events < min_batch_size)
+        double_processed += min_batch_size - num_new_events;
 
     //initialise the likelihood calculation
     l = MIN_LIKE;
     score = 0.0k;
     n = (accum)size_window;
     memset(L, 0, ANG_BUCKETS * sizeof(accum));
+    n_neg_events = 0;
 //    for(uint32_t i = 0; i < ANG_BUCKETS; i++) {
 //        L[i] = 0.0k;
 //    }
     negativeScaler = NEG_BIAS_CONSTANT / (r * r);
 
     //calculate the likelihood;
-    accum dx, dy, D, ABSD, cval;
-    uint32_t L_i, absdx, absdy;
+    accum dx, dy, D2, D, ABSDR, cval;
+    uint32_t L_i;
 
     uint32_t count = 0;
     uint32_t i = start_window;
@@ -419,26 +418,30 @@ void calculate_likelihood() {
 
         dx = X_MASK(event_window[i]) - x;
         dy = Y_MASK(event_window[i]) - y;
-        absdx = dx > 0.0k ? (uint32_t)(dx + 0.5k) : (uint32_t)(-dx + 0.5k);
-        absdy = dy > 0.0k ? (uint32_t)(dy + 0.5k) : (uint32_t)(-dy + 0.5k);
+        D2 = dx * dx + dy * dy;
 
-        if(absdx <= MAX_RADIUS_PLUS2 && absdy <= MAX_RADIUS_PLUS2) {
+        if(D2 <= MAX_RADIUS_PLUS2_SQRD) {
 
-            D = LUT_SQRT[absdy][absdx] - r;
-            ABSD = D > 0.0k ? D : -D;
+            D = LUT_SQRT[(uint32_t)(D2+0.5k)];
 
-            if(ABSD < INLIER_PAR_PLUS1) {
-                L_i = (uint32_t)(0.5k + 10.026769884k * (approxatan2(dy, dx) + K_PI));
-                cval = ABSD < 1.0k ? 1.0k : INLIER_PAR_PLUS1 - ABSD;
-                if(cval > L[L_i]) {
-                    score = (score + cval) - L[L_i];
-                    L[L_i] = cval;
-                    if(score > l) {
-                        l = score;
+            if(D < r + INLIER_PAR_PLUS1) {
+                if(D > r) ABSDR = D - r;
+                else ABSDR = r - D;
+
+                if(ABSDR <= INLIER_PAR_PLUS1) {
+                    L_i = (uint32_t)(0.5k + 10.026769884k * (approxatan2(dy, dx) + K_PI));
+                    cval = ABSDR < 1.0k ? 1.0k : (INLIER_PAR_PLUS1 - ABSDR)*INV_INLIER_PAR;
+                    if(cval > L[L_i]) {
+                        score = (score + cval) - L[L_i];
+                        L[L_i] = cval;
+                        if(score > l) {
+                            l = score;
+                        }
                     }
+                } else {
+                    n_neg_events++;
+                    score -= negativeScaler;
                 }
-            } else {
-                score -= negativeScaler;
             }
         }
 
@@ -555,6 +558,9 @@ void update(uint ticks, uint b) {
             dropped_count, events_unprocessed, double_processed);
 
         log_info("Score %d.%d (%d)", (int)score, (int)(score*10)%10, random_part_i);
+        log_info("Negative Scaler %d.%d%d (%d)", (int)negativeScaler,
+            (int)(negativeScaler*10)%10, (int)(negativeScaler*100)%10,
+            n_neg_events);
         //log_info("Window Size: %d, Start Index: %d", size_window, start_window);
 
         //log_info("Received Particle Messages: %d", packets_received);
@@ -626,6 +632,10 @@ bool initialize(uint32_t *timer_period) {
 
     log_info("Initialise: started");
 
+    accum temp = -10.0;
+    accum temp2 = int_to_accum(accum_to_int(temp) & 0x7FFFFFFF);
+    log_info("abs? %d %d", (int)temp, (int)temp2);
+
     // Get the address this core's DTCM data starts at from SRAM
     address_t address = data_specification_get_data_address();
 
@@ -686,16 +696,10 @@ bool initialize(uint32_t *timer_period) {
         }
     }
 
-    uint32_t n_indices = MAX_RADIUS_PLUS2 + 1;
-    LUT_SQRT = spin1_malloc(n_indices * sizeof(accum*));
-    for(uint32_t i = 0; i < n_indices; i++) {
-        LUT_SQRT[i] = spin1_malloc(n_indices * sizeof(accum));
-        for(uint32_t j = 0; j < n_indices; j++) {
-            accum y = (accum)i;
-            accum x = (accum)j;
-            LUT_SQRT[i][j] = sqrtk(y * y + x * x);
-        }
-    }
+    uint32_t n_indices = MAX_RADIUS_PLUS2_SQRD + 1;
+    LUT_SQRT = spin1_malloc(n_indices * sizeof(accum));
+    for(uint32_t i = 0; i < n_indices; i++)
+            LUT_SQRT[i] = sqrtk((accum)i);
 
 
     load_particle_into_next_array();

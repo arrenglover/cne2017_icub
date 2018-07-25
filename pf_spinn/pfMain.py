@@ -33,7 +33,7 @@ from spinn_front_end_common.utility_models. \
 logger = logging.getLogger(__name__)
 
 # state variables
-use_spinn_link = False
+use_spinn_link = True
 filename = "/home/aglover/workspace/datasets/spinnaker_tracking/1/ATIS/data.log"
 #filename = "data.log.spiking.txt"
 machine_time_step = constants.US_PER_STEP #us
@@ -45,11 +45,13 @@ spinnaker_link_used = 0
 
 print "Loading Dataset"
 spike_train = []
+video_sequence = []
 if not use_spinn_link:
     spike_train, video_sequence, data_time_ms = load_vbottle(filename=filename, window_size=constants.US_PER_STEP/1000, tsscaler=0.000000320)
     if spike_train == -1:
         quit()
-print "Dataset goes for {} ms".format(data_time_ms)
+    print "Dataset goes for {} ms".format(data_time_ms)
+
 
 
 front_end.setup(n_chips_required=n_chips_required,
