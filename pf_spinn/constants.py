@@ -23,7 +23,7 @@ MAIN_PARTICLE_TARGET_KEY = 0x00300000
 
 #used for incoming partition constraints and outgoing partition constraints of \
 #the filters - only look at the Y value and FILTER_BASE_KEY!
-FILTER_BASE_MASK = 0xFFFFFE00
+FILTER_BASE_MASK = 0xFFFFFC00
 
 #used to identify key-coded messages that are non-retina
 MESSAGE_TYPE_MASK = 0xFFF00000
@@ -31,7 +31,7 @@ MESSAGE_TYPE_MASK = 0xFFF00000
 
 RETINA_X_SIZE = 304
 RETINA_Y_SIZE = 240
-RETINA_Y_BIT_SHIFT = 9
+RETINA_Y_BIT_SHIFT = 12
 INITIAL_R = 20
 PARTICLES = 100
 

@@ -17,9 +17,9 @@
 #define MY_RAND int_to_accum(spin1_rand() & 0x00007FFF)
 #define NEG_BIAS_CONSTANT 40.74k //2.0 * 64 / pi r^2
 
-#define X_MASK(x) (accum)(x&0x1FF)
-#define Y_MASK(y) (accum)((y>>9)&0xFF)
-#define XY_CODE(x, y) (x&0x1FF)|((y&0xFF)<<9)
+#define X_MASK(x) (accum)((x>>1)&0x1FF)
+#define Y_MASK(y) (accum)((y>>12)&0xFF)
+#define XY_CODE(x, y) ((x&0x1FF)<<1)|((y&0xFF)<<12)
 
 #define ANG_BUCKETS 64
 #define INLIER_PAR_PLUS1 2.0k

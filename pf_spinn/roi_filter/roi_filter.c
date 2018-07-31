@@ -11,8 +11,8 @@
 #include <debug.h>
 #include <circular_buffer.h>
 
-#define X_MASK(x) x&0x1FF
-#define Y_MASK(x) (x>>9)&0xFF
+#define X_MASK(x) (x>>1)&0x1FF
+#define Y_MASK(y) (y>>12)&0xFF
 
 //! control value, which says how many timer ticks to run for before exiting
 static uint32_t simulation_ticks = 0;
