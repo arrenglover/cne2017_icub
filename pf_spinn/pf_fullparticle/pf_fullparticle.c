@@ -24,10 +24,10 @@
 #define ANG_BUCKETS 64
 #define INLIER_PAR_PLUS1 2.0k
 #define INV_INLIER_PAR 1.0k
-#define MIN_LIKE 6.4k //64 * 0.2k
+#define MIN_LIKE 12.8k //64 * 0.2k
 #define SIGMA 2.0k
 #define DIV_VALUE 200
-#define EVENT_WINDOW_SIZE 1024
+#define EVENT_WINDOW_SIZE 512
 #define RETINA_BUFFER_SIZE 4096
 #define TARGET_ELEMENTS 3
 #define SAVE_VECTOR_ELEMENTS TARGET_ELEMENTS
@@ -202,7 +202,7 @@ void send_p2p() {
 
     //make sure we actually have a key
     if(!i_has_key) {
-        log_info("Particle tried to send a packet without a key");
+        log_debug("Particle tried to send a packet without a key");
         return;
     }
 
@@ -265,16 +265,14 @@ void send_position_out()
         return;
 
     //send a message out
-    while (!spin1_send_mc_packet(output_key + (XY_CODE((uint32_t)x, (uint32_t)y) << 1), 0, NO_PAYLOAD)) {
+    uint32_t coded_position = XY_CODE(((uint32_t)x), ((uint32_t)y));
+    while (!spin1_send_mc_packet(output_key | coded_position, 0, NO_PAYLOAD)) {
         spin1_delay_us(1);
     }
 
-//        static int dropper = 0;
-//        if(dropper % 100 == 0)
-//            log_info("Sending output: %u %u", uint32_t(x), uint32_t(y));
-//        dropper++;
-
-
+    static int dropper = 0;
+    if(dropper++ % 100 == 0)
+        log_debug("Sending output: %d %d", (uint32_t)x, (uint32_t)y);
 
 }
 
@@ -333,7 +331,7 @@ void unload_weighted_random_particle() {
 
 //    static int divisor = 0;
 //    if(divisor++ % DIV_VALUE == 0) {
-//        log_info("Chosen Particle: %d", i);
+//        log_debug("Chosen Particle: %d", i);
 //    }
 
 }
@@ -342,16 +340,16 @@ void predict(float sigma) {
 
     //should this be changed to a gaussian distribution?
 
-    x += 2.0 * sigma * MY_RAND - sigma;
-    y += 2.0 * sigma * MY_RAND - sigma;
-    r += 0.2 * (2.0 * sigma * MY_RAND - sigma);
+    x += 2.0k * sigma * MY_RAND - sigma;
+    y += 2.0k * sigma * MY_RAND - sigma;
+    r += 0.2k * (2.0k * sigma * MY_RAND - sigma);
 
     if(r < 10.0k)      r = 10.0k;
     if(r > MAX_RADIUS)      r = MAX_RADIUS;
-    if(x < -r)      x = -r;
-    if(x > 304.0k+r)   x = 304.0k+r;
-    if(y < -r)      y = -r;
-    if(y > 240.0k+r)   y = 240.0k + r;
+    if(x < 0.0k)      x = 0.0k;
+    if(x > 304.0k)   x = 304.0k;
+    if(y < 0.0k)      y = 0.0k;
+    if(y > 240.0k)   y = 240.0k;
 
 }
 
@@ -467,11 +465,11 @@ void particle_filter_update_step(uint do_p2p, uint do_calc) {
 //        for(uint32_t i = 0; i < n_particles; i++) {
 //            uint32_t wdecimal1 = (int)(proc_data[i][W_IND]*1000)%10;
 //            uint32_t wdecimal2 = (int)(proc_data[i][W_IND]*10000)%10;
-//            log_info("[%d %d %d] L:%d W:%d.%d%d #%d", (int)proc_data[i][X_IND], (int)proc_data[i][Y_IND],
+//            log_debug("[%d %d %d] L:%d W:%d.%d%d #%d", (int)proc_data[i][X_IND], (int)proc_data[i][Y_IND],
 //            (int)proc_data[i][R_IND], (int)(proc_data[i][L_IND]), (int)(proc_data[i][W_IND]*100),
 //            wdecimal1, wdecimal2, (int)proc_data[i][N_IND]);
 //        }
-//        log_info("Target: [%d %d]", (int)x_target, (int)y_target);
+//        log_debug("Target: [%d %d]", (int)x_target, (int)y_target);
 //    }
 
     unload_weighted_random_particle();
@@ -515,7 +513,7 @@ void update(uint ticks, uint b) {
     time++;
 
     //accum a = MY_RAND;
-    //log_info("Using Fixed Point (%d %d 0.%d%d%d)", sizeof(accum), (int)a, (int)(a*10)%10, (int)(a*100)%10, (int)(a*1000)%10);
+    //log_debug("Using Fixed Point (%d %d 0.%d%d%d)", sizeof(accum), (int)a, (int)(a*10)%10, (int)(a*100)%10, (int)(a*1000)%10);
 
 
     //log_debug("on tick %d of %d", time, simulation_ticks);
@@ -523,11 +521,11 @@ void update(uint ticks, uint b) {
     // check that the run time hasn't already elapsed and thus needs to be
     // killed
     if ((infinite_run != TRUE) && (time >= simulation_ticks)) {
-        log_info("Simulation complete.\n");
+        log_debug("Simulation complete.\n");
 
         if (recording_flags > 0) {
             recording_finalise();
-            log_info("updating recording regions");
+            log_debug("updating recording regions");
         }
 
         // falls into the pause resume mode of operating
@@ -537,34 +535,36 @@ void update(uint ticks, uint b) {
 
     }
 
-    if (recording_flags > 0) {
+    if (recording_flags > 0 && !infinite_run) {
         for(int i = 0; i < TARGET_ELEMENTS; i++)
             save_vector[i] = (float)target[i];
-        recording_record(0, save_vector, sizeof(save_vector));
+        recording_record(0, save_vector, SAVE_VECTOR_ELEMENTS * sizeof(float));
     }
 
     if(time == 0) {
-        log_info("my key = %d", p2p_key);
+        log_debug("my key = %d", p2p_key);
     }
 
     if(time*timer_period >= log_counter) {
         log_counter += LOG_COUNTER_PERIOD;
         float avg_period = 1000.0f/(float)update_count;
 
-        log_info("Update: %d Hz / %d.%d%d ms | Events: %d/%d "
+        log_debug("Update: %d Hz / %d.%d%d ms | Events: %d/%d "
             "(%d dropped / %d unprocessed / %d overprocessed)",
             update_count, (int)avg_period, (int)(avg_period*10)%10,
             (int)(avg_period*100)%10, events_processed, received_count,
             dropped_count, events_unprocessed, double_processed);
 
-        log_info("Score %d.%d (%d)", (int)score, (int)(score*10)%10, random_part_i);
-        log_info("Negative Scaler %d.%d%d (%d)", (int)negativeScaler,
+        log_debug("Score %d.%d (%d)", (int)score, (int)(score*10)%10, random_part_i);
+        log_debug("Negative Scaler %d.%d%d (%d)", (int)negativeScaler,
             (int)(negativeScaler*10)%10, (int)(negativeScaler*100)%10,
             n_neg_events);
-        //log_info("Window Size: %d, Start Index: %d", size_window, start_window);
+        uint32_t coded_position = XY_CODE(((uint32_t)x), ((uint32_t)y));
+        log_debug("Exmple Coded Output: %d or 0x%08x", coded_position, coded_position);
+        //log_debug("Window Size: %d, Start Index: %d", size_window, start_window);
 
-        //log_info("Received Particle Messages: %d", packets_received);
-        //log_info("%d %d (%d %d)", finished_processing, packet_sending_turn, tried_to_call_proc_done, tried_to_call_my_turn);
+        //log_debug("Received Particle Messages: %d", packets_received);
+        //log_debug("%d %d (%d %d)", finished_processing, packet_sending_turn, tried_to_call_proc_done, tried_to_call_my_turn);
 
         update_count = 0;
         events_processed = 0;
@@ -622,6 +622,11 @@ bool read_transmission_keys(address_t address){
     filter_update_key = address[FILTER_UPDATE_KEY];
     output_key = address[OUTPUT_KEY];
 
+    log_info("My Keys:");
+    log_info("p2p: 0x%0.8x", p2p_key);
+    log_info("filter: 0x%0.8x", filter_update_key);
+    log_info("output: 0x%0.8x", output_key);
+
     return true;
 }
 
@@ -665,7 +670,7 @@ bool initialize(uint32_t *timer_period) {
     }
 
     // Setup recording
-    if(is_main) {
+    if(is_main && !infinite_run) {
         if (!recording_initialize(
             data_specification_get_region(RECORDING, address),
             &recording_flags)) {

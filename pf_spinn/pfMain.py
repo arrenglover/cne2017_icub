@@ -33,6 +33,7 @@ from spinn_front_end_common.utility_models. \
 logger = logging.getLogger(__name__)
 
 # state variables
+run_online = True
 use_spinn_link = True
 filename = "/home/aglover/workspace/datasets/spinnaker_tracking/1/ATIS/data.log"
 #filename = "data.log.spiking.txt"
@@ -47,7 +48,10 @@ print "Loading Dataset"
 spike_train = []
 video_sequence = []
 if not use_spinn_link:
-    spike_train, video_sequence, data_time_ms = load_vbottle(filename=filename, window_size=constants.US_PER_STEP/1000, tsscaler=0.000000320)
+    spike_train, video_sequence, data_time_ms = \
+        load_vbottle(filename=filename,
+                     window_size=constants.US_PER_STEP/1000,
+                     tsscaler=0.000000320)
     if spike_train == -1:
         quit()
     print "Dataset goes for {} ms".format(data_time_ms)
@@ -152,14 +156,19 @@ front_end.add_machine_edge_instance(
         label="Final Result Edge"),
     constants.EDGE_PARTITION_TARGET_POSITION)
 
+if(run_online):
+    front_end.run(None)
+    raw_input("Press Enter to stop operation...")
+else:
+    front_end.run(operation_time)
 
-front_end.run(operation_time)
-
-# used with test data
-placements = front_end.placements()
-buffer_manager = front_end.buffer_manager()
-placement = placements.get_placement_of_vertex(the_main_particle)
-data = the_main_particle.get_data(buffer_manager, placement)
+    # used with test data
+    placements = front_end.placements()
+    buffer_manager = front_end.buffer_manager()
+    placement = placements.get_placement_of_vertex(the_main_particle)
+    data = the_main_particle.get_data(buffer_manager, placement)
+    print "The simulation recorded {} steps".format(len(data))
+    #processAndPlot(video_sequence, data)
 
 
 #print "Data Extracted from Buffer"
@@ -168,4 +177,3 @@ data = the_main_particle.get_data(buffer_manager, placement)
 
 front_end.stop()
 
-processAndPlot(video_sequence, data)

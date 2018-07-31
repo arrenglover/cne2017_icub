@@ -83,7 +83,7 @@ void receive_data_payload(uint key, uint payload)
     //here we receive the region of interest and need to set the values
     //static int i = 0;
 //    if(i++ % 30 == 0) {
-//        log_info("Received new ROI %d %d %d", X_MASK(key), Y_MASK(key), payload);
+//        log_debug("Received new ROI %d %d %d", X_MASK(key), Y_MASK(key), payload);
 //    }
     update_LUT(X_MASK(key), Y_MASK(key), payload);
 
@@ -130,7 +130,7 @@ void update(uint ticks, uint b) {
     // check that the run time hasn't already elapsed and thus needs to be
     // killed
     if ((infinite_run != TRUE) && (time >= simulation_ticks)) {
-        log_info("Simulation complete.\n");
+        log_debug("Simulation complete.\n");
 
         // falls into the pause resume mode of operating
         simulation_handle_pause_resume(resume_callback);
@@ -141,7 +141,7 @@ void update(uint ticks, uint b) {
 
     if(time*timer_period  >= log_counter) {
         log_counter += 1000000;
-        log_info("Received = %d | Processed = %d | Period 1s | 0x%08x | 0x%08x",
+        log_debug("Received = %d | Processed = %d | Period 1s | 0x%08x | 0x%08x",
             received_count, events_processed, example_key, base_key);
         events_processed = 0;
         received_count = 0;
