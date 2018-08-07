@@ -30,12 +30,13 @@
 #define W_BITUNPACK(yw) ((yw<<0)&0x00007FFF)
 
 #define ANG_BUCKETS 64
+#define INV_ANG_BUCKETS 0.015625k
 #define INLIER_PAR_PLUS1 2.0k
 #define INV_INLIER_PAR 1.0k
 #define MIN_LIKE 12.8k //64 * 0.2k
 #define SIGMA 2.0k
-#define DIV_VALUE 200
-#define EVENT_WINDOW_SIZE 512
+#define DIV_VALUE 5000
+#define EVENT_WINDOW_SIZE 256
 #define RETINA_BUFFER_SIZE 4096
 #define TARGET_ELEMENTS 3
 #define SAVE_VECTOR_ELEMENTS TARGET_ELEMENTS
@@ -46,6 +47,7 @@
 #define K_PI 3.14159265359k
 #define K_PI_4 0.78539816k	/* pi/4 */
 #define LOG_COUNTER_PERIOD 1000000
+
 
 
 //! SYSTEM VARIABLES
@@ -70,7 +72,7 @@ typedef enum transmission_region_elements {
 
 typedef enum config_region_elements {
     X_COORD = 0, Y_COORD = 1, RADIUS = 2, P2P_ID = 3, IS_MAIN = 4,
-    N_PARTICLES = 5
+    N_PARTS = 5
 } config_region_elements;
 
 typedef enum callback_priorities {
@@ -83,6 +85,12 @@ static uint32_t event_window[EVENT_WINDOW_SIZE];
 //static accum event_window_y[EVENT_WINDOW_SIZE];
 static uint32_t start_window = 0;
 static uint32_t size_window = 0;
+
+#define N_PARTICLE_STATES 4
+typedef enum state_identifiers {
+    X_IND = 0, Y_IND = 1, R_IND = 2, W_IND = 3
+} state_identifiers;
+static accum **p_states;
 
 static accum *LUT_SQRT;
 static accum L[ANG_BUCKETS];
@@ -112,16 +120,16 @@ static uint32_t my_p2p_id;
 
 static uint32_t n_particles;
 static uint32_t last_index;
-static accum **proc_data, **work_data;
+static uint32_t **proc_data, **work_data;
 static circular_buffer retina_buffer;
 
 static uint32_t full_buffer;
 static uint32_t my_turn;
 
-#define PACKETS_PER_PARTICLE 4
+#define PACKETS_PER_PARTICLE 2
 typedef enum packet_identifiers{
-    X_IND = 0, Y_IND = 1, R_IND = 2, W_IND = 3
-}packet_identifiers;
+    XR_IND = 0, YW_IND = 1
+} packet_identifiers;
 
 
 //! DEBUG VARIABLES
@@ -184,8 +192,7 @@ void receive_retina_event(uint key, uint payload) {
 void receive_particle_data_packet(uint key, uint payload) {
 
     //load in data
-    work_data[packets_received++ / PACKETS_PER_PARTICLE][key&0x7] =
-        int_to_accum(payload);
+    work_data[packets_received++ / PACKETS_PER_PARTICLE][key&0x1] = payload;
 
     if(packets_received == my_turn) { //it is our turn to send data
         tried_to_call_my_turn = true;
@@ -195,7 +202,7 @@ void receive_particle_data_packet(uint key, uint payload) {
 
     if(packets_received == full_buffer) { //perform update
 
-        accum **temp = work_data;
+        uint32_t **temp = work_data;
         work_data = proc_data;
         proc_data = temp;
 
@@ -215,15 +222,18 @@ void send_p2p() {
         return;
     }
 
+    uint32_t xr = XR_BITPACK(accum_to_int(x), accum_to_int(r-MIN_RADIUS));
+    uint32_t yw = YW_BITPACK(accum_to_int(y), accum_to_int(w));
+
     //do the sending
-    while(!spin1_send_mc_packet(p2p_key + X_IND, accum_to_int(x), WITH_PAYLOAD))
+    while(!spin1_send_mc_packet(p2p_key + XR_IND, xr, WITH_PAYLOAD))
         spin1_delay_us(1);
-    while(!spin1_send_mc_packet(p2p_key + Y_IND, accum_to_int(y), WITH_PAYLOAD))
+    while(!spin1_send_mc_packet(p2p_key + YW_IND, yw, WITH_PAYLOAD))
         spin1_delay_us(1);
-    while(!spin1_send_mc_packet(p2p_key + R_IND, accum_to_int(r), WITH_PAYLOAD))
-        spin1_delay_us(1);
-    while(!spin1_send_mc_packet(p2p_key + W_IND, accum_to_int(w), WITH_PAYLOAD))
-        spin1_delay_us(1);
+//    while(!spin1_send_mc_packet(p2p_key + R_IND, accum_to_int(r), WITH_PAYLOAD))
+//        spin1_delay_us(1);
+//    while(!spin1_send_mc_packet(p2p_key + W_IND, accum_to_int(w), WITH_PAYLOAD))
+//        spin1_delay_us(1);
 
     //update the diagnostics for particle filter update rate.
     update_count++;
@@ -261,7 +271,7 @@ void send_roi()
     //this will send to the filters the updated ROI
     //only if the main_particle
     while (!spin1_send_mc_packet(filter_update_key + (XY_CODE((int)x, (int)y)),
-                (int)(r+15.0k), WITH_PAYLOAD)) {
+                (int)(r+7.0k), WITH_PAYLOAD)) {
             spin1_delay_us(1);
     }
 
@@ -274,7 +284,7 @@ void send_position_out()
         return;
 
     //send a message out
-    uint32_t coded_position = XY_CODE(((uint32_t)x), ((uint32_t)y));
+    uint32_t coded_position = XY_CODE(((uint32_t)target[0]), ((uint32_t)target[1]));
     while (!spin1_send_mc_packet(output_key | coded_position, 0, NO_PAYLOAD)) {
         spin1_delay_us(1);
     }
@@ -290,12 +300,31 @@ void send_position_out()
 ////////////////////////////////////////////////////////////////////////////////
 
 //! \brief move local particle data into particle array data
-void load_particle_into_next_array() {
+void load_state_into_table() {
 
-    work_data[last_index][X_IND] = x;
-    work_data[last_index][Y_IND] = y;
-    work_data[last_index][R_IND] = r;
-    work_data[last_index][W_IND] = w;
+//    work_data[last_index][X_IND] = x;
+//    work_data[last_index][Y_IND] = y;
+//    work_data[last_index][R_IND] = r;
+//    work_data[last_index][W_IND] = w;
+
+    p_states[last_index][X_IND] = x;
+    p_states[last_index][Y_IND] = y;
+    p_states[last_index][R_IND] = r;
+    p_states[last_index][W_IND] = w;
+
+}
+
+void unpack_p_states() {
+
+    for(uint32_t i = 0; i < n_particles - 1; i++) {
+        p_states[i][X_IND] = int_to_accum(X_BITUNPACK(proc_data[i][XR_IND]));
+        p_states[i][R_IND] = int_to_accum(R_BITUNPACK(proc_data[i][XR_IND]))
+            + MIN_RADIUS;
+        p_states[i][Y_IND] = int_to_accum(Y_BITUNPACK(proc_data[i][YW_IND]));
+        p_states[i][W_IND] = int_to_accum(W_BITUNPACK(proc_data[i][YW_IND]));
+    }
+
+    load_state_into_table();
 
 }
 
@@ -307,15 +336,15 @@ void normalise() {
     accum total = 0.0k;
 
     for(uint32_t i = 0; i < n_particles; i++) {
-        total += proc_data[i][W_IND];
+        total += p_states[i][W_IND];
     }
     total = 1.0k / total;
 
     for(uint32_t i = 0; i < n_particles; i++) {
-        proc_data[i][W_IND] *= total;
-        target[0] += proc_data[i][X_IND] * proc_data[i][W_IND];
-        target[1] += proc_data[i][Y_IND] * proc_data[i][W_IND];
-        target[2] += proc_data[i][R_IND] * proc_data[i][W_IND];
+        p_states[i][W_IND] *= total;
+        target[0] += p_states[i][X_IND] * p_states[i][W_IND];
+        target[1] += p_states[i][Y_IND] * p_states[i][W_IND];
+        target[2] += p_states[i][R_IND] * p_states[i][W_IND];
     }
 
 }
@@ -328,15 +357,15 @@ void unload_weighted_random_particle() {
     //set resampled according to distribution of weights
     accum accumed_sum = 0.0;
     for(random_part_i = 0; random_part_i < n_particles; random_part_i++) {
-        accumed_sum += proc_data[random_part_i][W_IND];
+        accumed_sum += p_states[random_part_i][W_IND];
         if(accumed_sum > rn) break;
     }
     if(random_part_i == n_particles) random_part_i--;
 
-    x = proc_data[random_part_i][X_IND];
-    y = proc_data[random_part_i][Y_IND];
-    r = proc_data[random_part_i][R_IND];
-    w = proc_data[random_part_i][W_IND];
+    x = p_states[random_part_i][X_IND];
+    y = p_states[random_part_i][Y_IND];
+    r = p_states[random_part_i][R_IND];
+    w = p_states[random_part_i][W_IND];
 
 //    static int divisor = 0;
 //    if(divisor++ % DIV_VALUE == 0) {
@@ -458,7 +487,7 @@ void calculate_likelihood() {
         count++;
     }
 
-    w = w * l;
+    w = w * l * INV_ANG_BUCKETS;
 
 }
 
@@ -467,18 +496,20 @@ void particle_filter_update_step(uint do_p2p, uint do_calc) {
     use(do_p2p);
     use(do_calc);
 
+    unpack_p_states();
+
     normalise();
 
 //    static int divisor = 0;
 //    if(divisor++ % DIV_VALUE == 0) {
+//        log_debug("==========");
 //        for(uint32_t i = 0; i < n_particles; i++) {
-//            uint32_t wdecimal1 = (int)(proc_data[i][W_IND]*1000)%10;
-//            uint32_t wdecimal2 = (int)(proc_data[i][W_IND]*10000)%10;
-//            log_debug("[%d %d %d] L:%d W:%d.%d%d #%d", (int)proc_data[i][X_IND], (int)proc_data[i][Y_IND],
-//            (int)proc_data[i][R_IND], (int)(proc_data[i][L_IND]), (int)(proc_data[i][W_IND]*100),
-//            wdecimal1, wdecimal2, (int)proc_data[i][N_IND]);
+//            log_debug("[%d %d %d] W:%d.%d%d", (int)p_states[i][X_IND], (int)p_states[i][Y_IND],
+//            (int)p_states[i][R_IND], (int)(p_states[i][W_IND]*100),
+//            (int)(p_states[i][W_IND]*1000)%10, (int)(p_states[i][W_IND]*10000)%10);
 //        }
-//        log_debug("Target: [%d %d]", (int)x_target, (int)y_target);
+//        log_debug("==========");
+//        //log_debug("Target: [%d %d]", (int)x_target, (int)y_target);
 //    }
 
     unload_weighted_random_particle();
@@ -490,7 +521,7 @@ void particle_filter_update_step(uint do_p2p, uint do_calc) {
     //do final tasks
     send_roi();
     send_position_out();
-    load_particle_into_next_array();
+    //load_particle_into_next_array();
 
     tried_to_call_proc_done = true;
     if(!spin1_schedule_callback(ready_to_send, 1, my_p2p_id == 0, SEND)) {
@@ -558,7 +589,7 @@ void update(uint ticks, uint b) {
         log_counter += LOG_COUNTER_PERIOD;
         float avg_period = 1000.0f/(float)update_count;
 
-        log_debug("Update: %d Hz / %d.%d%d ms | Events: %d/%d "
+        log_info("Update: %d Hz / %d.%d%d ms | Events: %d/%d "
             "(%d dropped / %d unprocessed / %d overprocessed)",
             update_count, (int)avg_period, (int)(avg_period*10)%10,
             (int)(avg_period*100)%10, events_processed, received_count,
@@ -576,9 +607,9 @@ void update(uint ticks, uint b) {
         //log_debug("%d %d (%d %d)", finished_processing, packet_sending_turn, tried_to_call_proc_done, tried_to_call_my_turn);
 
         log_debug("Example Recoding of Message");
-        log_debug("Initial: [%d.%d %d.%d %d.%d %d.%d]", (int)x, (int)(x*10)%10,
+        log_debug("Initial: [%d.%d %d.%d %d.%d %d.%d%d%d%d]", (int)x, (int)(x*10)%10,
             (int)y, (int)(y*10)%10, (int)r, (int)(r*10)%10, (int)w,
-            (int)(w*10)%10);
+            (int)(w*10)%10, (int)(w*100)%10, (int)(w*1000)%10, (int)(w*10000)%10);
 
         uint32_t xr = XR_BITPACK(accum_to_int(x), accum_to_int(r));
         uint32_t yw = YW_BITPACK(accum_to_int(y), accum_to_int(w));
@@ -587,9 +618,9 @@ void update(uint ticks, uint b) {
         accum y2 = int_to_accum(Y_BITUNPACK(yw));
         accum w2 = int_to_accum(W_BITUNPACK(yw));
 
-        log_debug("After: [%d.%d %d.%d %d.%d %d.%d]", (int)x2, (int)(x2*10)%10,
+        log_debug("After: [%d.%d %d.%d %d.%d %d.%d%d%d%d]", (int)x2, (int)(x2*10)%10,
             (int)y2, (int)(y2*10)%10, (int)r2, (int)(r2*10)%10, (int)w2,
-            (int)(w2*10)%10);
+            (int)(w2*10)%10, (int)(w2*100)%10, (int)(w2*1000)%10, (int)(w2*10000)%10);
 
         update_count = 0;
         events_processed = 0;
@@ -617,7 +648,7 @@ bool read_config(address_t address){
 
     //read data
     my_p2p_id = address[P2P_ID];
-    n_particles = address[N_PARTICLES];
+    n_particles = address[N_PARTS];
     if (address[IS_MAIN]) is_main = true;
 
     x = address[X_COORD];
@@ -715,12 +746,14 @@ bool initialize(uint32_t *timer_period) {
         return false;
     }
 
-    proc_data = spin1_malloc(n_particles * sizeof(accum*));
-    work_data = spin1_malloc(n_particles * sizeof(accum*));
+    proc_data = spin1_malloc(n_particles * sizeof(uint32_t*));
+    work_data = spin1_malloc(n_particles * sizeof(uint32_t*));
+    p_states = spin1_malloc(n_particles * sizeof(accum*));
     for(uint32_t i = 0; i < n_particles; i++) {
-        proc_data[i] = spin1_malloc(PACKETS_PER_PARTICLE * sizeof(accum));
-        work_data[i] = spin1_malloc(PACKETS_PER_PARTICLE * sizeof(accum));
-        if(!proc_data[i] || !work_data[i]) {
+        proc_data[i] = spin1_malloc(PACKETS_PER_PARTICLE * sizeof(uint32_t));
+        work_data[i] = spin1_malloc(PACKETS_PER_PARTICLE * sizeof(uint32_t));
+        p_states[i] = spin1_malloc(N_PARTICLE_STATES * sizeof(accum));
+        if(!proc_data[i] || !work_data[i] || !p_states[i]) {
             log_error("not enough space to create p2p data");
             return false;
         }
@@ -732,7 +765,8 @@ bool initialize(uint32_t *timer_period) {
             LUT_SQRT[i] = sqrtk((accum)i);
 
 
-    load_particle_into_next_array();
+    load_state_into_table();
+
 
     spin1_srand (p2p_key);
 
