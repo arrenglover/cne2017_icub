@@ -21,6 +21,14 @@
 #define Y_MASK(y) (accum)((y>>12)&0xFF)
 #define XY_CODE(x, y) ((x&0x1FF)<<1)|((y&0xFF)<<12)
 
+#define XR_BITPACK(x, r) ((r&0x000FFFC0)>>6 | (x&0x00FFFFC0)<<8)
+#define X_BITUNPACK(xr) ((xr>>8)&0x00FFFFC0)
+#define R_BITUNPACK(xr) ((xr<<6)&0x000FFFC0)
+
+#define YW_BITPACK(y, w) ((w&0x00007FFF)>>0 | (y&0x007FFFC0)<<9)
+#define Y_BITUNPACK(yw) ((yw>>9)&0x007FFFC0)
+#define W_BITUNPACK(yw) ((yw<<0)&0x00007FFF)
+
 #define ANG_BUCKETS 64
 #define INLIER_PAR_PLUS1 2.0k
 #define INV_INLIER_PAR 1.0k
@@ -32,6 +40,7 @@
 #define TARGET_ELEMENTS 3
 #define SAVE_VECTOR_ELEMENTS TARGET_ELEMENTS
 #define MAX_RADIUS 40.0k
+#define MIN_RADIUS 10.0k
 #define MAX_RADIUS_PLUS2 42
 #define MAX_RADIUS_PLUS2_SQRD 1764
 #define K_PI 3.14159265359k
@@ -270,9 +279,9 @@ void send_position_out()
         spin1_delay_us(1);
     }
 
-    static int dropper = 0;
-    if(dropper++ % 100 == 0)
-        log_debug("Sending output: %d %d", (uint32_t)x, (uint32_t)y);
+//    static int dropper = 0;
+//    if(dropper++ % 100 == 0)
+//        log_debug("Sending output: %d %d", (uint32_t)x, (uint32_t)y);
 
 }
 
@@ -565,6 +574,22 @@ void update(uint ticks, uint b) {
 
         //log_debug("Received Particle Messages: %d", packets_received);
         //log_debug("%d %d (%d %d)", finished_processing, packet_sending_turn, tried_to_call_proc_done, tried_to_call_my_turn);
+
+        log_debug("Example Recoding of Message");
+        log_debug("Initial: [%d.%d %d.%d %d.%d %d.%d]", (int)x, (int)(x*10)%10,
+            (int)y, (int)(y*10)%10, (int)r, (int)(r*10)%10, (int)w,
+            (int)(w*10)%10);
+
+        uint32_t xr = XR_BITPACK(accum_to_int(x), accum_to_int(r));
+        uint32_t yw = YW_BITPACK(accum_to_int(y), accum_to_int(w));
+        accum x2 = int_to_accum(X_BITUNPACK(xr));
+        accum r2 = int_to_accum(R_BITUNPACK(xr));
+        accum y2 = int_to_accum(Y_BITUNPACK(yw));
+        accum w2 = int_to_accum(W_BITUNPACK(yw));
+
+        log_debug("After: [%d.%d %d.%d %d.%d %d.%d]", (int)x2, (int)(x2*10)%10,
+            (int)y2, (int)(y2*10)%10, (int)r2, (int)(r2*10)%10, (int)w2,
+            (int)(w2*10)%10);
 
         update_count = 0;
         events_processed = 0;

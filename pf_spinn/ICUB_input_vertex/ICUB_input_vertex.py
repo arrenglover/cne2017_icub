@@ -14,7 +14,7 @@ from pf_spinn import constants
 
 class ICUBInputVertex(
         MachineSpiNNakerLinkVertex,
-    #AbstractProvidesNKeysForPartition,
+        #AbstractProvidesNKeysForPartition,
         #AbstractProvidesOutgoingPartitionConstraints
 ):
 
