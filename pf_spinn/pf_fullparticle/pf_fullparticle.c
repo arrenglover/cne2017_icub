@@ -136,11 +136,12 @@ typedef enum packet_identifiers{
 static uint32_t received_count = 0;
 static uint32_t dropped_count = 0;
 static uint32_t events_processed = 0;
-static uint32_t events_unprocessed = 0;
 static uint32_t update_count = 0;
 static uint32_t packets_received = 0;
-static uint32_t double_processed = 0;
+static uint32_t over_processed = 0;
+static uint32_t under_processed = 0;
 static uint32_t n_neg_events = 0;
+static uint32_t events_in_delay = 0;
 
 static bool packet_sending_turn = false;
 static bool finished_processing = true;
@@ -393,8 +394,8 @@ void predict(float sigma) {
 
 static inline accum approxatan2(accum y, accum x) {
 
-    accum absy = y > 0.0k ? y : -y;
-    accum absx = x > 0.0k ? x : -x;
+    accum absy = y < 0.0k ? -y : y;
+    accum absx = x < 0.0k ? -x : x;
     accum a = absy < absx ? absy / absx : absx / absy;
     accum r = a * (K_PI_4 - (a - 1.0k) * 0.2733185k);
     if(absy > absx) r = 1.57079637k - r;
@@ -410,9 +411,12 @@ void calculate_likelihood() {
     //load in new data
     //uint cpsr = spin1_int_disable();
     uint32_t num_new_events = circular_buffer_size(retina_buffer);
-    uint32_t min_batch_size = (uint32_t)(K_PI * r + 0.5k);
-    uint32_t num_batch_events = min_batch_size < num_new_events ? min_batch_size : num_new_events;
-    for(uint32_t i = 0; i < num_batch_events; i++) {
+    uint32_t max_batch_size = (uint32_t)(2.0k * K_PI * r + 0.5k);
+    max_batch_size = max_batch_size > EVENT_WINDOW_SIZE ? EVENT_WINDOW_SIZE : max_batch_size;
+
+    uint32_t this_batch_size = num_new_events > max_batch_size ? max_batch_size : num_new_events;
+
+    for(uint32_t i = 0; i < this_batch_size; i++) {
         start_window = (start_window + 1) % EVENT_WINDOW_SIZE;
         circular_buffer_get_next(retina_buffer, &event_window[start_window]);
     }
@@ -420,18 +424,19 @@ void calculate_likelihood() {
 
 
     //set the new window size
-    size_window = size_window + num_batch_events;
+    size_window = size_window + this_batch_size;
     if(size_window > EVENT_WINDOW_SIZE) size_window = EVENT_WINDOW_SIZE;
 
-   // int events_processed_temp = 0;
-//    if(num_new_events < size_window)
-//        events_processed_temp = num_new_events;
-//    else
-//        events_processed_temp = size_window;
-    //events_unprocessed += num_new_events - events_processed_temp;
-    events_processed += num_batch_events;
-    if(num_batch_events < min_batch_size)
-        double_processed += min_batch_size - num_new_events;
+    events_processed += this_batch_size;
+
+    if(this_batch_size > size_window) {
+        under_processed += this_batch_size - size_window;
+    } else {
+        over_processed += size_window - this_batch_size;
+    }
+
+    if(this_batch_size < num_new_events)
+        events_in_delay += num_new_events - this_batch_size;
 
     //initialise the likelihood calculation
     l = MIN_LIKE;
@@ -444,6 +449,7 @@ void calculate_likelihood() {
 //    }
     negativeScaler = NEG_BIAS_CONSTANT / (r * r);
 
+
     //calculate the likelihood;
     accum dx, dy, D2, D, ABSDR, cval;
     uint32_t L_i;
@@ -454,6 +460,8 @@ void calculate_likelihood() {
 
         dx = X_MASK(event_window[i]) - x;
         dy = Y_MASK(event_window[i]) - y;
+//        dx = r+0.01;
+//        dy = 0.01;
         D2 = dx * dx + dy * dy;
 
         if(D2 <= MAX_RADIUS_PLUS2_SQRD) {
@@ -586,14 +594,16 @@ void update(uint ticks, uint b) {
     }
 
     if(time*timer_period >= log_counter) {
+        if(update_count == 0) update_count = 1;
         log_counter += LOG_COUNTER_PERIOD;
         float avg_period = 1000.0f/(float)update_count;
 
         log_info("Update: %d Hz / %d.%d%d ms | Events: %d/%d "
-            "(%d dropped / %d unprocessed / %d overprocessed)",
+            "(%d drop / %d non-pc'd / %d over-pc'd / %d avg-delay)",
             update_count, (int)avg_period, (int)(avg_period*10)%10,
             (int)(avg_period*100)%10, events_processed, received_count,
-            dropped_count, events_unprocessed, double_processed);
+            dropped_count, under_processed, over_processed,
+            events_in_delay / update_count);
 
         log_debug("Score %d.%d (%d)", (int)score, (int)(score*10)%10, random_part_i);
         log_debug("Negative Scaler %d.%d%d (%d)", (int)negativeScaler,
@@ -624,10 +634,11 @@ void update(uint ticks, uint b) {
 
         update_count = 0;
         events_processed = 0;
-        events_unprocessed = 0;
+        under_processed = 0;
         received_count = 0;
         dropped_count = 0;
-        double_processed = 0;
+        over_processed = 0;
+        events_in_delay = 0;
 
 
     }
